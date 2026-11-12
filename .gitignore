@@ -1,0 +1,12 @@
+# Dữ liệu sinh ra khi chạy — không đưa lên Git
+database/storage/data.json
+database/storage/uploads/
+
+# Hệ điều hành / IDE
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Log
+*.log
