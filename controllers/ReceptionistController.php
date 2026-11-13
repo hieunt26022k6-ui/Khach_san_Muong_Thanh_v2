@@ -57,7 +57,7 @@ class ReceptionistController extends BaseController {
             $roomNumber = trim($_POST['roomNumber'] ?? '');
 
             if ($bookingCode && $roomNumber) {
-                // [SỬA LT-E03] Dùng kết quả trả về của Model để báo đúng thành công/thất bại
+                // Dùng kết quả trả về của Model để báo đúng thành công/thất bại
                 if ($this->bookingModel->checkIn($bookingCode, $roomNumber)) {
                     AuditLog::record('CHECK_IN', "Nhận phòng {$roomNumber} cho đơn {$bookingCode}");
                     Session::flash('success', "Check-in thành công cho đơn #{$bookingCode}. Đã bàn giao phòng {$roomNumber} cho khách.");

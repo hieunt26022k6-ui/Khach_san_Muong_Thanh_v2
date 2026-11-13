@@ -38,7 +38,7 @@ spl_autoload_register(function ($class) {
     }
 });
 
-// [SỬA HT-E04] Chỉ hiện lỗi chi tiết khi đang phát triển; bản triển khai thật đặt Config::DEBUG = false
+// Chỉ hiện lỗi chi tiết khi đang phát triển; bản triển khai thật đặt Config::DEBUG = false
 ini_set('display_errors', \Config\Config::DEBUG ? '1' : '0');
 ini_set('log_errors', '1');
 
@@ -51,7 +51,7 @@ if (isset($_GET['controller']) && $_GET['controller'] === 'api') {
     exit;
 }
 
-// [SỬA HT-E03] Mọi địa chỉ có tham số controller đều đi qua Router, nên toàn bộ liên kết và biểu mẫu
+// Mọi địa chỉ có tham số controller đều đi qua Router, nên toàn bộ liên kết và biểu mẫu
 // trong View PHP (index.php?controller=...) hoạt động mà không cần thêm view_mode=classic_php.
 // Chỉ trang gốc (không có controller) mới mở giao diện đóng gói.
 if (isset($_GET['controller']) || (isset($_GET['view_mode']) && $_GET['view_mode'] === 'classic_php')) {
@@ -60,7 +60,7 @@ if (isset($_GET['controller']) || (isset($_GET['view_mode']) && $_GET['view_mode
 }
 
 // 2. Chuyển đổi vai trò nhanh qua URL (vd: ?role=customer | receptionist | admin)
-// [SỬA HT-E07] Chuyển vai trò không cần đăng nhập => chỉ được bật khi Config::DEMO_MODE = true
+// Chuyển vai trò không cần đăng nhập => chỉ được bật khi Config::DEMO_MODE = true
 if (isset($_GET['role']) && \Config\Config::DEMO_MODE) {
     $targetRole = $_GET['role'];
     $users = Core\Session::get('users', []);
@@ -84,7 +84,7 @@ $reportModel = new Models\Report();
 // 4. Thu thập toàn bộ trạng thái dữ liệu nghiệp vụ khách sạn từ PHP Models
 $currentUser = Core\Session::get('currentUser', null);
 
-// [SỬA LẦN 2] Nhân viên/quản trị đã đăng nhập bằng phiên PHP thì KHÔNG đưa vào giao diện React
+// Nhân viên/quản trị đã đăng nhập bằng phiên PHP thì KHÔNG đưa vào giao diện React
 // (giao diện đó phân quyền ở trình duyệt). Đưa thẳng sang bảng điều khiển PHP có kiểm tra quyền ở máy chủ.
 if ($currentUser && in_array($currentUser['role'], ['admin', 'receptionist'], true)) {
     $target = $currentUser['role'] === 'admin'
@@ -94,28 +94,35 @@ if ($currentUser && in_array($currentUser['role'], ['admin', 'receptionist'], tr
     exit;
 }
 
-// [SỬA LẦN 2] Không bao giờ đẩy mật khẩu (kể cả mã băm) ra HTML cho trình duyệt đọc.
-$publicUsers = array_map(function (array $u): array {
-    unset($u['password']);
-    return $u;
-}, Core\Session::get('users', []));
+// 5. TRANG CHỦ: mặc định chạy giao diện KHÁCH HÀNG viết bằng PHP MVC (controller customer).
+//    Bundle React build sẵn (assets/index-*.js) chỉ còn dùng khi gọi rõ ?view_mode=spa,
+//    giữ lại để tham chiếu thiết kế ban đầu — không phải giao diện chính của đồ án.
+if (isset($_GET['view_mode']) && $_GET['view_mode'] === 'spa') {
+    // Không bao giờ đẩy mật khẩu (kể cả mã băm) ra HTML cho trình duyệt đọc.
+    $publicUsers = array_map(function (array $u): array {
+        unset($u['password']);
+        return $u;
+    }, Core\Session::get('users', []));
 
-$serverState = [
-    'currentUser' => $currentUser,
-    'users' => $publicUsers,
-    'roomCategories' => Core\Session::get('roomCategories', []),
-    'physicalRooms' => Core\Session::get('physicalRooms', []),
-    'packages' => Core\Session::get('packages', []),
-    'services' => Core\Session::get('services', []),
-    'bookings' => Core\Session::get('bookings', []),
-    'serviceOrders' => Core\Session::get('serviceOrders', []),
-    'incidents' => Core\Session::get('incidents', []),
-    'reviews' => Core\Session::get('reviews', []),
-    'policy' => Core\Session::get('policy', null),
-    'templates' => Core\Session::get('templates', []),
-    'sentNotifications' => Core\Session::get('sentNotifications', []),
-    'auditLogs' => Core\Session::get('auditLogs', []),
-];
+    $serverState = [
+        'currentUser' => $currentUser,
+        'users' => $publicUsers,
+        'roomCategories' => Core\Session::get('roomCategories', []),
+        'physicalRooms' => Core\Session::get('physicalRooms', []),
+        'packages' => Core\Session::get('packages', []),
+        'services' => Core\Session::get('services', []),
+        'bookings' => Core\Session::get('bookings', []),
+        'serviceOrders' => Core\Session::get('serviceOrders', []),
+        'incidents' => Core\Session::get('incidents', []),
+        'reviews' => Core\Session::get('reviews', []),
+        'policy' => Core\Session::get('policy', null),
+        'templates' => Core\Session::get('templates', []),
+        'sentNotifications' => Core\Session::get('sentNotifications', []),
+        'auditLogs' => Core\Session::get('auditLogs', []),
+    ];
+    require __DIR__ . '/views/layouts/app.php';
+    exit;
+}
 
-// 5. Kết xuất View giao diện chính (Views/Layouts/app.php)
-require __DIR__ . '/views/layouts/app.php';
+header('Location: index.php?controller=customer&action=index');
+exit;

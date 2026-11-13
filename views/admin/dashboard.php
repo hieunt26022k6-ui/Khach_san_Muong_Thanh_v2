@@ -1,16 +1,16 @@
 <?php
-use Core\Session;   // [SỬA QT-E01] dòng còn thiếu gây lỗi fatal
+use Core\Session;   // dòng còn thiếu gây lỗi fatal
 use Config\Config;
 
 $currentTab = $_GET['tab'] ?? 'overview';
 $physicalRooms = Session::get('physicalRooms', []);
 
-// [SỬA LẦN 2] Tên người đang đăng nhập lấy từ phiên, không hard-code "Hoàng Anh Tuấn".
+// Tên người đang đăng nhập lấy từ phiên, không hard-code "Hoàng Anh Tuấn".
 $me = Session::get('currentUser', []);
 $meName = $me['fullName'] ?? 'Quản trị viên';
 $meRole = $me['role'] ?? 'admin';
 
-// [SỬA LẦN 2] Trạng thái tìm kiếm / phân trang dùng chung cho 3 bảng.
+// Trạng thái tìm kiếm / phân trang dùng chung cho 3 bảng.
 $keyword = $keyword ?? '';
 $pageNo = (int)($page ?? 1);
 $pagerUrl = function (int $p, string $tab) use ($keyword): string {
@@ -71,6 +71,10 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                     <span>🏷️</span>
                     <span>Hạng phòng & Bảng giá</span>
                 </a>
+                <a href="index.php?controller=admin&action=index&tab=room_packages" class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all <?= $currentTab === 'room_packages' ? 'bg-[#C5A25D] text-[#0F2032] font-bold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                    <span>🎁</span>
+                    <span>Gói phòng & Bảo trì</span>
+                </a>
                 <a href="index.php?controller=admin&action=index&tab=users" class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all <?= $currentTab === 'users' ? 'bg-[#C5A25D] text-[#0F2032] font-bold shadow' : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                     <span>👥</span>
                     <span>Quản lý người dùng (RBAC)</span>
@@ -111,7 +115,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
-                <!-- [SỬA LẦN 2] Ô tìm kiếm bản ghi (yêu cầu bắt buộc của đề) -->
+                <!-- Ô tìm kiếm bản ghi (yêu cầu bắt buộc của đề) -->
                 <form method="GET" action="index.php" class="flex items-center gap-2">
                     <input type="hidden" name="controller" value="admin" />
                     <input type="hidden" name="action" value="index" />
@@ -166,7 +170,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                     </h3>
                     <div class="grid grid-cols-7 gap-2 pt-4 text-center text-xs">
                         <?php
-                        // [SỬA LẦN 2] Số liệu lấy từ Report::getDailyRevenue() — trước đây là mảng hard-code.
+                        // Số liệu lấy từ Report::getDailyRevenue() — trước đây là mảng hard-code.
                         $weekdays = [1 => 'Thứ 2', 2 => 'Thứ 3', 3 => 'Thứ 4', 4 => 'Thứ 5', 5 => 'Thứ 6', 6 => 'Thứ 7', 7 => 'CN'];
                         $dailyRevenue = $dailyRevenue ?? [];
                         foreach ($dailyRevenue as $day):
@@ -231,7 +235,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                                 </button>
                             </form>
 
-                            <!-- [SỬA LẦN 2] Xử lý file: tải ảnh đại diện hạng phòng -->
+                            <!-- Xử lý file: tải ảnh đại diện hạng phòng -->
                             <div class="flex items-center gap-2 pt-2 border-t border-[#E8DCB8]">
                                 <?php if (!empty($cat['image']) && file_exists(__DIR__ . '/../../' . $cat['image'])): ?>
                                     <img src="<?= htmlspecialchars($cat['image']) ?>" alt="<?= htmlspecialchars($cat['name']) ?>"
@@ -251,6 +255,109 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                 </div>
             </div>
 
+        <?php elseif ($currentTab === 'room_packages'): ?>
+            <!-- AD-12: GÓI PHÒNG & PHỤ THU -->
+            <div class="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-stone-100 pb-3">
+                    <h3 class="font-display text-2xl font-bold text-[#0F2032]">Gói Phòng & Phụ Thu Mỗi Đêm</h3>
+                    <span class="text-xs text-stone-500">Thay đổi chỉ áp dụng cho đơn đặt mới</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left">
+                        <thead class="text-[10px] uppercase tracking-wider text-stone-500 border-b border-stone-200">
+                            <tr>
+                                <th class="py-2 pr-3">Gói phòng</th>
+                                <th class="py-2 pr-3">Mô tả</th>
+                                <th class="py-2 pr-3">Phụ thu / đêm</th>
+                                <th class="py-2 pr-3">Trạng thái</th>
+                                <th class="py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-stone-100">
+                            <?php foreach (($packages ?? []) as $pkg): ?>
+                                <tr>
+                                    <td class="py-2 pr-3 font-semibold text-[#0F2032]"><?= htmlspecialchars((string)($pkg['name'] ?? '')) ?></td>
+                                    <td class="py-2 pr-3 text-stone-500"><?= htmlspecialchars(mb_substr((string)($pkg['description'] ?? ''), 0, 60)) ?></td>
+                                    <td class="py-2 pr-3" colspan="3">
+                                        <form method="POST" action="index.php?controller=admin&action=updatePackage" class="flex items-center gap-2">
+                                            <input type="hidden" name="packageId" value="<?= htmlspecialchars((string)$pkg['id']) ?>" />
+                                            <input type="number" name="priceOffset" min="0" step="50000"
+                                                   value="<?= (int)($pkg['priceOffset'] ?? 0) ?>"
+                                                   class="w-32 px-2.5 py-1.5 bg-white border border-stone-300 rounded font-bold text-stone-900" />
+                                            <select name="isActive" class="px-2 py-1.5 bg-white border border-stone-300 rounded">
+                                                <option value="1" <?= !empty($pkg['isActive']) ? 'selected' : '' ?>>Đang bán</option>
+                                                <option value="0" <?= empty($pkg['isActive']) ? 'selected' : '' ?>>Tạm ngưng</option>
+                                            </select>
+                                            <button type="submit" class="px-3 py-1.5 bg-[#0F2032] text-white text-[10px] font-bold uppercase rounded">Lưu</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- AD-12: KHÓA PHÒNG BẢO TRÌ -->
+            <div class="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-stone-100 pb-3">
+                    <h3 class="font-display text-2xl font-bold text-[#0F2032]">Khóa Phòng Bảo Trì</h3>
+                    <span class="text-xs text-stone-500">Khóa mềm — giữ nguyên dữ liệu và lịch sử đơn</span>
+                </div>
+
+                <form method="POST" action="index.php?controller=admin&action=setRoomMaintenance"
+                      class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                    <input type="hidden" name="maintenanceAction" value="lock" />
+                    <div>
+                        <label class="block font-semibold mb-1">Phòng</label>
+                        <select name="roomNumber" required class="w-full px-2.5 py-2 bg-white border border-stone-300 rounded">
+                            <?php foreach (($physicalRooms ?? []) as $room): ?>
+                                <option value="<?= htmlspecialchars((string)$room['roomNumber']) ?>">
+                                    <?= htmlspecialchars((string)$room['roomNumber']) ?> · <?= htmlspecialchars((string)($room['categoryId'] ?? '')) ?> · <?= htmlspecialchars((string)($room['status'] ?? '')) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Lý do</label>
+                        <input type="text" name="reason" maxlength="120" placeholder="Sửa điều hòa, thay nệm…"
+                               class="w-full px-2.5 py-2 bg-white border border-stone-300 rounded" />
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Bảo trì đến ngày</label>
+                        <input type="date" name="until" class="w-full px-2.5 py-2 bg-white border border-stone-300 rounded" />
+                    </div>
+                    <div class="flex items-end">
+                        <button type="submit" class="w-full px-3 py-2 bg-[#0F2032] text-white font-bold rounded">Khóa bảo trì</button>
+                    </div>
+                </form>
+
+                <div class="space-y-2 pt-2 border-t border-stone-100">
+                    <div class="text-[10px] uppercase tracking-wider font-bold text-[#A68238]">Phòng đang bảo trì</div>
+                    <?php $lockedRooms = array_values(array_filter($physicalRooms ?? [], fn(array $r): bool => ($r['status'] ?? '') === 'maintenance')); ?>
+                    <?php if (!$lockedRooms): ?>
+                        <p class="text-xs text-stone-500">Hiện chưa có phòng nào bị khóa bảo trì.</p>
+                    <?php else: ?>
+                        <?php foreach ($lockedRooms as $room): ?>
+                            <div class="flex items-center justify-between p-2.5 bg-stone-50 rounded-lg text-xs">
+                                <div>
+                                    <span class="font-bold text-[#0F2032]"><?= htmlspecialchars((string)$room['roomNumber']) ?></span>
+                                    <span class="text-stone-500"> · <?= htmlspecialchars((string)($room['maintenanceReason'] ?? 'Bảo trì')) ?></span>
+                                    <?php if (!empty($room['maintenanceUntil'])): ?>
+                                        <span class="text-stone-400"> · đến <?= htmlspecialchars((string)$room['maintenanceUntil']) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <form method="POST" action="index.php?controller=admin&action=setRoomMaintenance">
+                                    <input type="hidden" name="maintenanceAction" value="unlock" />
+                                    <input type="hidden" name="roomNumber" value="<?= htmlspecialchars((string)$room['roomNumber']) ?>" />
+                                    <button type="submit" class="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded">Mở khóa</button>
+                                </form>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
         <?php elseif ($currentTab === 'users'): ?>
             <!-- QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN RBAC -->
             <div class="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm space-y-4">
@@ -259,7 +366,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                     <span class="text-xs text-stone-500">Khách hàng · Lễ tân · Quản trị viên</span>
                 </div>
 
-                <!-- [SỬA LẦN 2] Tạo tài khoản nhân viên + gán vai trò (đề yêu cầu "quản lý người dùng") -->
+                <!-- Tạo tài khoản nhân viên + gán vai trò (đề yêu cầu "quản lý người dùng") -->
                 <details class="bg-[#FAF7F2] border border-[#E8DCB8] rounded-xl p-4">
                     <summary class="cursor-pointer text-xs font-bold uppercase tracking-wider text-[#A68238]">+ Thêm tài khoản nhân viên</summary>
                     <form method="POST" action="index.php?controller=admin&action=createUser" class="grid grid-cols-1 md:grid-cols-5 gap-3 pt-4 text-xs">
@@ -323,7 +430,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                                     </td>
                                     <td class="p-3 text-right">
                                         <?php if ($u['role'] !== 'admin'): ?>
-                                            <!-- [SỬA LẦN 2] Gán lại vai trò ngay trong bảng -->
+                                            <!-- Gán lại vai trò ngay trong bảng -->
                                             <form method="POST" action="index.php?controller=admin&action=updateRole" class="inline-flex items-center gap-1 mr-2">
                                                 <input type="hidden" name="userId" value="<?= $u['id'] ?>" />
                                                 <select name="role" class="px-1.5 py-1 border border-stone-300 rounded text-[11px]">
@@ -401,7 +508,7 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                     Cấu Hình Chính Sách Lưu Trú & Tiền Cọc
                 </h3>
                 <div class="space-y-4 text-xs">
-                    <!-- [SỬA LẦN 2] Tab chính sách nay sửa được (trước đây chỉ readonly) -->
+                    <!-- Tab chính sách nay sửa được (trước đây chỉ readonly) -->
                     <form method="POST" action="index.php?controller=admin&action=updatePolicy" class="space-y-4">
                         <div>
                             <label class="block font-semibold mb-1">Tỷ lệ tiền cọc tối thiểu khi đặt phòng (%)</label>
@@ -415,6 +522,13 @@ $renderPager = function (int $current, int $pages, int $total, string $tab) use 
                                    value="<?= (int)($policy['freeCancelBeforeHours'] ?? 48) ?>"
                                    class="w-full p-2.5 bg-white border border-stone-300 rounded" />
                             <p class="text-[11px] text-stone-500 mt-1">Giờ nhận phòng tiêu chuẩn: <?= htmlspecialchars((string)($policy['standardCheckInTime'] ?? '14:00')) ?></p>
+                        </div>
+                        <div>
+                            <label class="block font-semibold mb-1">Mức phạt khi hủy muộn / không đến (%)</label>
+                            <input type="number" name="lateCancelPenaltyPercent" min="0" max="100" step="1"
+                                   value="<?= (int)($policy['lateCancelPenaltyPercent'] ?? 50) ?>"
+                                   class="w-full p-2.5 bg-white border border-stone-300 rounded" />
+                            <p class="text-[11px] text-stone-500 mt-1">Áp dụng cho đơn hủy sau mốc miễn phí; đơn đã chốt trước đó không bị tính lại.</p>
                         </div>
                         <div>
                             <label class="block font-semibold mb-1">Chính sách trẻ em và giường phụ</label>

@@ -3,7 +3,7 @@
  * MƯỜNG THANH LUXURY PHÚ QUỐC — PHP OOP MVC
  * Models/Voucher.php
  *
- * [SỬA KH-E02] MỘT nguồn duy nhất cho quy tắc mã ưu đãi. Giao diện (qua API) và Controller đặt phòng
+ * MỘT nguồn duy nhất cho quy tắc mã ưu đãi. Giao diện (qua API) và Controller đặt phòng
  * cùng dùng lớp này, nên máy chủ tự tính mức giảm thay vì tin con số do trình duyệt gửi lên.
  */
 

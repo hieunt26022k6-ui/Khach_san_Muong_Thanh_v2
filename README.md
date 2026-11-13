@@ -1,22 +1,19 @@
 # Khách sạn Mường Thanh Luxury Phú Quốc — BTL TMU x DEHA
 
-Website đặt phòng khách sạn (PHP 8 OOP + MVC), đồ án cuối kỳ môn **Lập trình web với PHP (TMU x DEHA)**.
+Website đặt phòng khách sạn (PHP 8 OOP + MVC + **MySQL/PDO**), đồ án cuối kỳ môn **Lập trình web với PHP (TMU x DEHA)**.
+Repo này là **bản riêng của Nguyễn Trung Hiếu (Module 4 — Quản trị viên)** sau khi rà soát, sửa lỗi và bổ sung
+phần còn thiếu so với barem chấm.
 
-Repo này là **bản riêng của Nguyễn Trung Hiếu (Module 4 — Quản trị viên)** sau khi rà soát và sửa lỗi,
-tách khỏi repo của nhóm để cả nhóm cùng commit mà không ảnh hưởng bản đang nộp.
-
-## Chạy trên XAMPP
+## Chạy trên XAMPP (3 bước)
 
 1. Copy thư mục này vào `C:\xampp\htdocs\Khach_san_Muong_Thanh_v2`
-2. Bật **Apache** trong XAMPP Control Panel
-3. Mở `http://localhost/Khach_san_Muong_Thanh_v2/`
+2. Bật **Apache** + **MySQL** trong XAMPP Control Panel
+3. Import CSDL: mở <http://localhost/phpmyadmin> → tab **Import** → chọn `database/muongthanh_hotel.sql`
+   (hoặc dòng lệnh: `C:\xampp\mysql\bin\mysql.exe -u root < database\muongthanh_hotel.sql`)
+4. Mở <http://localhost/Khach_san_Muong_Thanh_v2/>
 
-Bản chạy nhanh không cần Apache:
-
-```bash
-C:\xampp\php\php.exe -S 127.0.0.1:8000 -t .
-# http://127.0.0.1:8000/
-```
+Lần chạy đầu, hệ thống tự nạp bộ dữ liệu mẫu đầy đủ (4 tài khoản, 9 hạng phòng, 24 phòng vật lý,
+3 gói phòng, 7 dịch vụ, đơn đặt phòng, nhật ký…) vào MySQL.
 
 ## Tài khoản demo
 
@@ -26,61 +23,85 @@ C:\xampp\php\php.exe -S 127.0.0.1:8000 -t .
 | Lễ tân | `letan` | `123` |
 | Khách hàng | `khachhang` / `khachhang2` | `123` |
 
-Đăng nhập bằng nút **ĐĂNG NHẬP** ở chân trang (form PHP, có CSRF). Sau khi đăng nhập, quản trị viên và
-lễ tân được đưa thẳng vào bảng điều khiển PHP:
+Mật khẩu mẫu đang để dạng văn bản để tiện demo — lần đăng nhập đầu tiên hệ thống **tự băm lại**
+bằng `password_hash()`; tài khoản tạo mới trong trang quản trị lưu ngay dạng băm.
 
-- Admin: `index.php?controller=admin&action=index`
-- Lễ tân: `index.php?controller=receptionist&action=index`
+## Cơ sở dữ liệu — quan hệ thật, không phải "lớp chuyển tiếp"
+
+CSDL `muongthanh_hotel` có **15 bảng**, khóa chính/khóa ngoại đầy đủ (`database/muongthanh_hotel.sql`).
+
+| Quan hệ | Bảng | Cách thể hiện |
+|---|---|---|
+| **1–N** | `room_categories` → `physical_rooms` | `physical_rooms.category_id` FK → `room_categories.id` |
+| **1–N** | `users` → `bookings` | `bookings.user_id` FK → `users.id` |
+| **1–N** | `bookings` → `service_orders` | `service_orders.booking_id` FK → `bookings.id` |
+| **N–N** | `bookings` ↔ `services` | bảng trung gian `booking_services(booking_id, service_id)` khóa chính ghép |
+| **1–1** | `users` ↔ `user_profiles` | `user_profiles.user_id` vừa là PK vừa là FK |
+| **1–1** | khách sạn ↔ `hotel_policy` | bảng cấu hình đúng một dòng cho mỗi chính sách |
+
+**Truy vấn SQL nằm ở đâu?** — `core/Store.php` (lớp truy cập dữ liệu dùng chung) sinh câu lệnh
+`SELECT / INSERT / UPDATE / DELETE` bằng PDO prepared statement cho cả 12 nhóm dữ liệu;
+`models/Report.php::getDailyRevenue()` dùng `SELECT … GROUP BY DATE(check_in_date)` để tính doanh thu.
+Mỗi bảng còn một cột `payload` kiểu JSON giữ các thuộc tính mở rộng của giao diện, nên View không phải sửa
+khi chuyển từ kho JSON sang MySQL.
+
+Nếu MySQL chưa bật, `Store` tự rơi về tệp `database/storage/data.json` để buổi demo không trắng trang —
+trang quản trị vẫn chạy, chỉ là dữ liệu không nằm trong MySQL.
+
+## Giao diện: một hệ thống duy nhất (PHP MVC)
+
+- **Khách hàng**: `index.php?controller=customer&…` (View PHP: trang chủ, tìm phòng, đặt phòng, cổng dịch vụ, ẩm thực, spa).
+- **Lễ tân / Quản trị**: đăng nhập bằng form PHP → vào bảng điều khiển PHP có kiểm tra quyền ở máy chủ.
+- Bundle React build sẵn (`assets/index-*.js`) chỉ còn mở được khi gọi rõ `?view_mode=spa`;
+  đây là bản thiết kế tham chiếu ban đầu, **không phải giao diện chính** và không tham gia phân quyền.
 
 ## Module 4 — Quản trị viên (phần của Hiếu)
 
-| Mã | Chức năng | File |
+| Mã | Chức năng | Nơi cài đặt |
 |---|---|---|
-| AD-11 | Quản lý tài khoản nhân viên & phân quyền: tạo tài khoản, gán vai trò, khóa/mở khóa (không xóa cứng) | `controllers/AdminController.php`, `models/User.php` |
-| AD-12 | Giá & gói phòng, khóa bảo trì, chính sách cọc/hủy (chỉ áp dụng cho đơn mới) | `controllers/AdminController.php`, `models/Room.php` |
-| AD-13 | Dashboard, báo cáo doanh thu, nhật ký thao tác (audit log) | `models/Report.php`, `models/AuditLog.php` |
+| AD-11 | Quản lý tài khoản & phân quyền: tạo tài khoản, gán vai trò, khóa/mở khóa (không xóa cứng) | `AdminController::createUser/updateRole/toggleUserLock`, `models/User.php` |
+| AD-12 | Bảng giá hạng phòng, **gói phòng (phụ thu + bật/tắt)**, **khóa phòng bảo trì**, chính sách cọc – hủy – **phạt hủy muộn** | `AdminController::updatePrice/updatePackage/setRoomMaintenance/updatePolicy`, `models/Room.php` |
+| AD-13 | Dashboard, báo cáo doanh thu (SQL GROUP BY), nhật ký thao tác server-side | `models/Report.php`, `models/AuditLog.php` |
 
-Bảng điều khiển có 6 tab: Tổng quan & Doanh thu · Hạng phòng & Bảng giá · Quản lý người dùng (RBAC) ·
-Toàn bộ đơn đặt phòng · Chính sách cọc & Hủy · Nhật ký hệ thống.
+Bảng điều khiển có 7 tab: Tổng quan & Doanh thu · Hạng phòng & Bảng giá · **Gói phòng & Bảo trì** ·
+Quản lý người dùng (RBAC) · Toàn bộ đơn đặt phòng · Chính sách cọc & Hủy · Nhật ký hệ thống.
 
 ## Yêu cầu bắt buộc của đề — đã có
 
-- **Phân trang** (10 dòng/trang) + **tìm kiếm** trên danh sách người dùng, đơn đặt phòng, nhật ký
-- **Xử lý file**: upload ảnh hạng phòng (`move_uploaded_file`, kiểm tra 4 lớp: lỗi upload → đuôi → MIME thật → ≤ 2MB)
-- **Đăng nhập + quản lý người dùng** ở phía admin
-- **CSRF token** cho mọi POST, `password_hash`/`password_verify`, kiểm tra quyền ở máy chủ (`requireRole`)
-- PHP OOP/MVC, 3 loại quan hệ bảng N–N, 1–N, 1–1 trong `database/muongthanh_hotel.sql`
+- **Phân trang** (10 dòng/trang) + **tìm kiếm** trên người dùng, đơn đặt phòng, nhật ký
+- **Xử lý file**: upload ảnh hạng phòng (kiểm tra 4 lớp: lỗi upload → đuôi → MIME thật → ≤ 2MB),
+  ảnh lưu ở `assets/uploads/` nên hiển thị được ngay trên trình duyệt
+- **Đăng nhập + quản lý người dùng** ở phía admin, phân quyền kiểm tra ở máy chủ (`requireRole`)
+- **CSRF** cho mọi POST, `password_hash`/`password_verify`, escape HTML bằng `htmlspecialchars`
+- **CSDL quan hệ** MySQL với đủ 3 loại quan hệ N–N, 1–N, 1–1 (bảng trên)
+- Nghiệp vụ có transaction: trả phòng cập nhật đơn + trạng thái phòng trong **một** giao dịch
 
 ## Cấu trúc
 
 ```
 index.php                 # front controller + autoloader
-config/                   # Config, Database
-core/                     # Router, Session, Store, BaseController, BaseModel
+config/                   # Config, Database (PDO)
+core/                     # Router, Session, Store (MySQL), BaseController, BaseModel
 controllers/              # Admin, Auth, Customer, Receptionist, Api
 models/                   # User, Room, Booking, Report, AuditLog, Voucher, ServiceOrder
 views/                    # layouts + admin/ customer/ receptionist/
-database/                 # muongthanh_hotel.sql, seed_data.php, storage/
-assets/                   # bundle giao diện + hình ảnh
+database/                 # muongthanh_hotel.sql (15 bảng), seed_data.php, storage/
+assets/                   # hình ảnh, bundle giao diện cũ, uploads/
 ```
-
-## Ghi chú kỹ thuật
-
-- Dữ liệu hiện lưu ở `database/storage/data.json` (kho dùng chung nhiều phiên trình duyệt) — **bước đệm
-  trước khi chuyển sang MySQL/PDO**; file `.sql` đã có sẵn schema.
-- `Config::DEBUG` và `Config::DEMO_MODE` đang **false** (bản nộp). Bật `DEMO_MODE` chỉ khi cần chuyển vai
-  trò nhanh lúc trình diễn.
-- Giao diện khách là bundle React build sẵn (`assets/index-*.js`) nên **không sửa trực tiếp được**;
-  phần nghiệp vụ và phân quyền chạy ở UI PHP.
 
 ## Quy trình làm việc nhóm
 
 ```bash
-git pull            # trước khi làm
+git pull                # trước khi làm
 # ...sửa code...
-git add -A && git commit -m "mo ta thay doi"
-git push            # xong việc là push ngay
+git add -A && git commit -m "..." && git push
 ```
 
-Mỗi người nên làm trên nhánh riêng (`module-admin`, `module-letan`, …) rồi merge vào `main`.
-`index.php`, `core/`, `config/Database.php`, `database/*.sql` là file dùng chung — thống nhất ai giữ trước khi sửa.
+File dùng chung cần thống nhất người giữ: `index.php`, `core/`, `database/*.sql`.
+
+## Giới hạn đã biết (ghi rõ để không bị hỏi khó)
+
+- Các bảng dùng cột `payload` JSON cho thuộc tính mở rộng — chấp nhận được vì đề yêu cầu quan hệ và
+  truy vấn SQL, không yêu cầu chuẩn hóa tuyệt đối từng cột.
+- Report còn một số chỉ số ước tính (ADR/RevPAR) và đã ghi chú ngay trên giao diện.
+- Tên "25 phòng" trong bundle React cũ không sửa được (file minified); CSDL thực tế có 24 phòng vật lý.

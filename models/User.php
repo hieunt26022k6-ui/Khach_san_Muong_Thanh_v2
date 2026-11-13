@@ -11,7 +11,7 @@ use Core\Session;
 
 class User extends BaseModel {
     /**
-     * [SỬA HT-E04] Đối chiếu mật khẩu bằng password_verify. Tài khoản cũ còn mật khẩu văn bản thuần
+     * Đối chiếu mật khẩu bằng password_verify. Tài khoản cũ còn mật khẩu văn bản thuần
      * (dữ liệu mẫu) vẫn đăng nhập được một lần rồi được băm lại ngay.
      */
     public function authenticate(string $username, string $password): ?array {
@@ -52,7 +52,7 @@ class User extends BaseModel {
         foreach ($users as &$u) {
             if ($u['id'] === $id) {
                 if (($u['role'] ?? '') === 'admin') {
-                    return false; // [SỬA] không cho khóa tài khoản quản trị (tránh tự khóa mình)
+                    return false; // không cho khóa tài khoản quản trị (tránh tự khóa mình)
                 }
                 $u['isLocked'] = !$u['isLocked'];
                 Session::set('users', $users);
@@ -62,7 +62,7 @@ class User extends BaseModel {
         return false;
     }
 
-    /** [SỬA LẦN 2] Kiểm tra trùng cả tên đăng nhập VÀ email (trước đây chỉ chặn trùng username). */
+    /** Kiểm tra trùng cả tên đăng nhập VÀ email (trước đây chỉ chặn trùng username). */
     public function isTaken(string $username, string $email = '', string $ignoreId = ''): bool {
         foreach ($this->getAll() as $u) {
             if (($u['id'] ?? '') === $ignoreId) continue;
@@ -100,7 +100,7 @@ class User extends BaseModel {
     }
 
     /**
-     * [SỬA LẦN 2] Quản trị viên tạo tài khoản nhân viên (lễ tân) — đề bài yêu cầu
+     * Quản trị viên tạo tài khoản nhân viên (lễ tân) — đề bài yêu cầu
      * "quản lý người dùng": tạo tài khoản + gán vai trò, không chỉ khóa/mở khóa.
      */
     public function createStaff(array $data): array {
@@ -149,7 +149,7 @@ class User extends BaseModel {
         return ['ok' => true, 'message' => "Đã tạo tài khoản {$username} với vai trò {$role}.", 'user' => $newUser];
     }
 
-    /** [SỬA LẦN 2] Gán lại vai trò cho một tài khoản (trừ tài khoản quản trị cao nhất). */
+    /** Gán lại vai trò cho một tài khoản (trừ tài khoản quản trị cao nhất). */
     public function updateRole(string $id, string $role): bool {
         if (!in_array($role, ['receptionist', 'admin', 'customer'], true)) return false;
 

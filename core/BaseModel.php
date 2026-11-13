@@ -1,7 +1,7 @@
 <?php
 /**
- * MƯỜNG THANH LUXURY PHÚ QUỐC — PHP OOP MVC
- * Core/BaseModel.php
+ * MƯỜNG THANH LUXURY PHÚ QUỐC — PHP 8 OOP MVC
+ * Core/BaseModel.php — lớp cha của mọi Model, giữ kết nối CSDL và nạp dữ liệu mẫu lần đầu
  */
 
 namespace Core;
@@ -18,31 +18,27 @@ abstract class BaseModel {
     }
 
     /**
-     * Initializes Session-backed persistent mock storage if MySQL isn't imported yet
+     * Lần chạy đầu tiên (CSDL vừa import, chưa có dữ liệu) thì nạp bộ dữ liệu mẫu.
+     * Nếu kho dữ liệu bị xoá sạch bất thường (không còn tài khoản nào) cũng tự nạp lại,
+     * để hệ thống không bao giờ hiện trang trắng trước mặt giảng viên.
      */
     protected function initMockStorage(): void {
         Session::start();
-        // [SỬA LẦN 2] Bổ sung điều kiện "users rỗng" : nếu kho dữ liệu bị mất/ghi hỏng thì tự nạp lại
-        // dữ liệu mẫu, thay vì chạy tiếp với hệ thống trắng (trước đây chỉ dựa vào cờ __mt_initialized).
-        if (!Session::has('__mt_initialized') || empty(Session::get('users', []))) {
-            $seedFile = __DIR__ . '/../database/seed_data.php';
-            if (file_exists($seedFile)) {
-                $seed = require $seedFile;
-                Session::set('users', $seed['users'] ?? []);
-                Session::set('roomCategories', $seed['roomCategories'] ?? []);
-                Session::set('physicalRooms', $seed['physicalRooms'] ?? []);
-                Session::set('packages', $seed['packages'] ?? []);
-                Session::set('services', $seed['services'] ?? []);
-                Session::set('bookings', $seed['bookings'] ?? []);
-                Session::set('serviceOrders', $seed['serviceOrders'] ?? []);
-                Session::set('auditLogs', $seed['auditLogs'] ?? []);
-                Session::set('incidents', $seed['incidents'] ?? []);
-                Session::set('reviews', $seed['reviews'] ?? []);
-                Session::set('policy', $seed['policy'] ?? null);
-                Session::set('templates', $seed['templates'] ?? []);
-                Session::set('sentNotifications', $seed['sentNotifications'] ?? []);
-                Session::set('__mt_initialized', true);
-            }
+
+        $initialized = (bool)Session::get('__mt_initialized', false);
+        $hasUsers = !empty(Session::get('users', []));
+        if ($initialized && $hasUsers) {
+            return;
         }
+
+        $seedFile = __DIR__ . '/../database/seed_data.php';
+        if (!file_exists($seedFile)) {
+            return;
+        }
+        $seed = require $seedFile;
+        if (!is_array($seed)) {
+            return;
+        }
+        Store::seedFromArray($seed);
     }
 }

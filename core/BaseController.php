@@ -71,7 +71,7 @@ abstract class BaseController {
     }
 
     /**
-     * [SỬA LẦN 2] Lọc theo từ khoá trên nhiều trường (không phân biệt hoa/thường, có dấu tiếng Việt).
+     * Lọc theo từ khoá trên nhiều trường (không phân biệt hoa/thường, có dấu tiếng Việt).
      */
     protected function containsKeyword(array $row, array $fields, string $keyword): bool {
         if ($keyword === '') return true;
@@ -87,7 +87,7 @@ abstract class BaseController {
     }
 
     /**
-     * [SỬA LẦN 2] Cắt danh sách theo trang — trả về dữ liệu của trang + tổng số trang.
+     * Cắt danh sách theo trang — trả về dữ liệu của trang + tổng số trang.
      */
     protected function paginateRows(array $rows, int $page, int $perPage = 10): array {
         $total = count($rows);

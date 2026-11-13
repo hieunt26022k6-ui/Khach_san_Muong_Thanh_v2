@@ -294,7 +294,7 @@ function recalculatePrice() {
     if (appliedVoucherCode) applyVoucher(true);
 }
 
-// [SỬA KH-E02] Quy tắc mã ưu đãi do máy chủ quyết định (API), giao diện chỉ hiển thị
+// Quy tắc mã ưu đãi do máy chủ quyết định (API), giao diện chỉ hiển thị
 function applyVoucher(silent) {
     const code = (silent && appliedVoucherCode)
         ? appliedVoucherCode

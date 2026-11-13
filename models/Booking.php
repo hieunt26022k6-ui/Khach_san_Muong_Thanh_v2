@@ -8,6 +8,7 @@ namespace Models;
 
 use Core\BaseModel;
 use Core\Session;
+use Core\Store;
 
 class Booking extends BaseModel {
     private string $error = '';
@@ -18,7 +19,7 @@ class Booking extends BaseModel {
     }
 
     /**
-     * [SỬA KH-E04] Đếm số đơn còn hiệu lực của một hạng phòng có khoảng ngày CHỒNG LẤN với [in, out).
+     * Đếm số đơn còn hiệu lực của một hạng phòng có khoảng ngày CHỒNG LẤN với [in, out).
      * Hai khoảng [a1,b1) và [a2,b2) chồng lấn khi a1 < b2 và a2 < b1.
      */
     public function countOverlapping(string $categoryId, string $in, string $out): int {
@@ -57,7 +58,7 @@ class Booking extends BaseModel {
 
     public function create(array $data): array {
         $bookings = $this->getAll();
-        // [SỬA KH-E05] Sinh lại mã nếu đã tồn tại
+        // Sinh lại mã nếu đã tồn tại
         do {
             $code = 'MT-' . random_int(1000, 9999);
         } while ($this->findByCode($code) !== null);
@@ -125,7 +126,7 @@ class Booking extends BaseModel {
         unset($b);
         Session::set('bookings', $bookings);
 
-        // [SỬA LT-E04] Nhả phòng đã giữ chỗ trước đó cho chính đơn này nếu khác phòng mới
+        // Nhả phòng đã giữ chỗ trước đó cho chính đơn này nếu khác phòng mới
         if ($oldRoom && $oldRoom !== $roomNumber) {
             $old = $roomModel->findRoom($oldRoom);
             if ($old !== null && $old['status'] === 'reserved') {
@@ -148,21 +149,26 @@ class Booking extends BaseModel {
             return false;
         }
 
-        $bookings = $this->getAll();
-        $roomNumber = null;
-        foreach ($bookings as &$b) {
-            if (strcasecmp($b['bookingCode'], $bookingCode) === 0) {
-                $b['status'] = 'completed';
-                $roomNumber = $b['assignedRoomNumber'] ?? null;
-                $b['remainingBalance'] = 0; // Đã thanh toán đầy đủ
-                break;
+        // Trả phòng là nghiệp vụ gồm HAI lần ghi (đơn đặt phòng + trạng thái phòng vật lý).
+        // Bọc trong một giao dịch: nếu bước thứ hai lỗi thì đơn vẫn giữ trạng thái cũ,
+        // tránh cảnh "đơn đã hoàn tất nhưng phòng vẫn đang ở trạng thái có khách".
+        return Store::transaction(function () use ($bookingCode) {
+            $bookings = $this->getAll();
+            $roomNumber = null;
+            foreach ($bookings as &$b) {
+                if (strcasecmp($b['bookingCode'], $bookingCode) === 0) {
+                    $b['status'] = 'completed';
+                    $roomNumber = $b['assignedRoomNumber'] ?? null;
+                    $b['remainingBalance'] = 0; // Đã thanh toán đầy đủ
+                    break;
+                }
             }
-        }
-        unset($b);
-        Session::set('bookings', $bookings);
-        if ($roomNumber) {
-            (new Room())->updateRoomStatus($roomNumber, 'cleaning');
-        }
-        return true;
+            unset($b);
+            Session::set('bookings', $bookings);
+            if ($roomNumber) {
+                (new Room())->updateRoomStatus($roomNumber, 'cleaning');
+            }
+            return true;
+        });
     }
 }

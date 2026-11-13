@@ -1,12 +1,8 @@
-# Dữ liệu sinh ra khi chạy — không đưa lên Git
+# Dữ liệu sinh ra khi chạy, không đưa lên GitHub
 database/storage/data.json
 database/storage/uploads/
-
-# Hệ điều hành / IDE
-Thumbs.db
-.DS_Store
-.vscode/
-.idea/
-
-# Log
+assets/uploads/*
+!assets/uploads/.gitkeep
 *.log
+.DS_Store
+Thumbs.db

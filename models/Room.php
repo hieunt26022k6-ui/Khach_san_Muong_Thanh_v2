@@ -101,9 +101,48 @@ class Room extends BaseModel {
     }
 
     /**
-     * [SỬA LẦN 2] Xử lý file upload ảnh hạng phòng (yêu cầu "xử lý file" của đề BTL).
+     * Xử lý file upload ảnh hạng phòng (yêu cầu "xử lý file" của đề BTL).
      * Bốn lớp kiểm tra: lỗi upload → đuôi file → MIME thật (finfo) → dung lượng ≤ 2MB.
      */
+    /**
+     * AD-12: cập nhật gói phòng (phụ thu mỗi đêm + trạng thái đang bán / tạm ngưng).
+     * Chỉ ảnh hưởng tới các đơn tạo MỚI — đơn cũ đã chốt giá trong bảng bookings.
+     */
+    public function updatePackage(string $packageId, int $priceOffset, bool $isActive): bool {
+        $packages = Session::get('packages', []);
+        foreach ($packages as &$p) {
+            if ($p['id'] !== $packageId) { continue; }
+            $p['priceOffset'] = $priceOffset;
+            $p['isActive'] = $isActive;
+            Session::set('packages', $packages);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * AD-12: khóa phòng bảo trì / mở khai thác lại phòng vật lý.
+     * Khóa mềm (đổi trạng thái) chứ không xóa bản ghi, để lịch sử đơn vẫn tra được.
+     */
+    public function setRoomMaintenance(string $roomNumber, bool $lock, string $reason = '', string $until = ''): bool {
+        $rooms = Session::get('physicalRooms', []);
+        foreach ($rooms as &$r) {
+            if (strcasecmp((string)($r['roomNumber'] ?? ''), $roomNumber) !== 0) { continue; }
+            if ($lock) {
+                $r['status'] = 'maintenance';
+                $r['maintenanceReason'] = $reason !== '' ? $reason : 'Bảo trì theo kế hoạch';
+                $r['maintenanceUntil'] = $until !== '' ? $until : date('Y-m-d', strtotime('+7 day'));
+            } else {
+                $r['status'] = 'available';
+                $r['maintenanceReason'] = null;
+                $r['maintenanceUntil'] = null;
+            }
+            Session::set('physicalRooms', $rooms);
+            return true;
+        }
+        return false;
+    }
+
     public function saveCategoryImage(string $categoryId, ?array $file): array {
         if (!$file || !isset($file['error']) || is_array($file['error'])) {
             return ['ok' => false, 'message' => 'Chưa chọn tệp ảnh.'];
@@ -140,7 +179,9 @@ class Room extends BaseModel {
             return ['ok' => false, 'message' => 'Hạng phòng không tồn tại.'];
         }
 
-        $uploadDir = __DIR__ . '/../database/storage/uploads';
+        // Thư mục assets/uploads nằm trong vùng công khai của website nên trình duyệt
+        // hiển thị được ảnh vừa upload (thư mục database/storage bị .htaccess chặn vì chứa dữ liệu).
+        $uploadDir = __DIR__ . '/../assets/uploads';
         if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0775, true)) {
             return ['ok' => false, 'message' => 'Không tạo được thư mục lưu ảnh.'];
         }
@@ -153,12 +194,12 @@ class Room extends BaseModel {
 
         foreach ($cats as &$c) {
             if ($c['id'] === $categoryId) {
-                $c['image'] = 'database/storage/uploads/' . $fileName;
+                $c['image'] = 'assets/uploads/' . $fileName;
                 break;
             }
         }
         Session::set('roomCategories', $cats);
 
-        return ['ok' => true, 'message' => 'Đã cập nhật ảnh cho hạng phòng.', 'path' => 'database/storage/uploads/' . $fileName];
+        return ['ok' => true, 'message' => 'Đã cập nhật ảnh cho hạng phòng.', 'path' => 'assets/uploads/' . $fileName];
     }
 }

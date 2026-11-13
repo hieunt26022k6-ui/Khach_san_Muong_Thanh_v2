@@ -14,7 +14,7 @@ class Config {
     public const HOTEL_EMAIL = 'info@phuquoc.muongthanh.vn';
     public const DEPOSIT_PERCENT = 30; // Tiền cọc tối thiểu 30%
 
-    // [SỬA LẦN 2] Mặc định TẮT cả hai công tắc để bản nộp không còn đường tắt đăng nhập.
+    // Mặc định TẮT cả hai công tắc để bản nộp không còn đường tắt đăng nhập.
     // Khi cần trình diễn nhanh mới bật tạm DEMO_MODE = true.
     public const DEBUG = false;     // true: hiện lỗi chi tiết (chỉ dùng khi phát triển)
     public const DEMO_MODE = false; // true: cho phép thanh "chuyển vai trò nhanh" (chỉ dùng khi trình diễn)

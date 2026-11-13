@@ -92,7 +92,7 @@ class CustomerController extends BaseController {
         }
         $nights = max(1, (int)((strtotime($out) - strtotime($in)) / 86400));
 
-        // --- [SỬA KH-E04] Kiểm tra còn phòng trong khoảng ngày ---
+        // --- Kiểm tra còn phòng trong khoảng ngày ---
         $stock = $this->roomModel->countByCategory($catId);
         $taken = $this->bookingModel->countOverlapping($catId, $in, $out);
         if ($taken >= $stock) {
@@ -100,7 +100,7 @@ class CustomerController extends BaseController {
             $this->redirect('index.php?controller=customer&action=rooms&roomId=' . urlencode($catId));
         }
 
-        // --- [SỬA KH-E02] Máy chủ tự tra phụ thu gói và mức giảm, KHÔNG tin số tiền từ biểu mẫu ---
+        // --- Máy chủ tự tra phụ thu gói và mức giảm, KHÔNG tin số tiền từ biểu mẫu ---
         $package = $this->roomModel->findPackage($_POST['packageId'] ?? '')
                    ?? $this->roomModel->findPackage('pkg_room_only');
         $pkgOffset = (int)($package['priceOffset'] ?? 0);
@@ -108,7 +108,11 @@ class CustomerController extends BaseController {
         $subTotal = ((int)$category['basePrice'] + $pkgOffset) * $nights;
         $voucher  = Voucher::apply((string)($_POST['voucherCode'] ?? ''), $subTotal);
         $totalAmount = max(0, $subTotal - $voucher['discount']);
-        $depositPaid = (int)round($totalAmount * \Config\Config::DEPOSIT_PERCENT / 100);
+        // Tỷ lệ cọc lấy theo chính sách admin đã thiết lập (AD-12), chỉ dùng hằng số khi chưa có chính sách
+        $policyNow = Session::get('policy', []);
+        $depositPercent = (int)($policyNow['depositRequiredPercent'] ?? \Config\Config::DEPOSIT_PERCENT);
+        $depositPercent = max(0, min(100, $depositPercent));
+        $depositPaid = (int)round($totalAmount * $depositPercent / 100);
 
         $newBooking = $this->bookingModel->create([
             'customerName'  => $name,
@@ -125,7 +129,7 @@ class CustomerController extends BaseController {
             'depositPaid'   => $depositPaid,
         ]);
 
-        // [SỬA KH-E01] Tính chuỗi tiền TRƯỚC khi nối vào thông báo (PHP không gọi hàm bên trong chuỗi)
+        // Tính chuỗi tiền TRƯỚC khi nối vào thông báo (PHP không gọi hàm bên trong chuỗi)
         $depositText = number_format($depositPaid, 0, ',', '.');
         Session::flash('success', "Đặt phòng thành công! Mã đơn của quý khách là: {$newBooking['bookingCode']}. Vui lòng chuẩn bị cọc 30% ({$depositText} ₫) để hoàn tất.");
         $this->redirect('index.php?controller=customer&action=portal&bookingCode=' . $newBooking['bookingCode']);
@@ -148,11 +152,22 @@ class CustomerController extends BaseController {
         $myBookings = [];
         if ($bookingCode) {
             $b = $this->bookingModel->findByCode($bookingCode);
+
+            // Khách vãng lai (chưa đăng nhập) muốn xem chi tiết đơn phải nhập đúng số điện thoại
+            // đã dùng khi đặt phòng — biết mã đơn thôi là chưa đủ.
+            if ($b && empty($currentUser)) {
+                $phoneInput = preg_replace('/\D+/', '', (string)($_GET['phone'] ?? ''));
+                $phoneStored = preg_replace('/\D+/', '', (string)($b['customerPhone'] ?? ''));
+                if ($phoneInput === '' || $phoneInput !== $phoneStored) {
+                    Session::flash('error', 'Vui lòng nhập đúng số điện thoại dùng khi đặt phòng để xem chi tiết đơn ' . $bookingCode . '.');
+                    $b = null;
+                }
+            }
             if ($b) $myBookings[] = $b;
         } elseif ($phone) {
             $myBookings = $this->bookingModel->findByCustomerPhone($phone);
         }
-        // [SỬA KH-E03] Không còn trả toàn bộ đơn cho người chưa đăng nhập / không nhập mã đơn
+        // Không còn trả toàn bộ đơn cho người chưa đăng nhập / không nhập mã đơn
 
         $services = $this->serviceModel->getServices();
         $myOrders = $this->serviceModel->getAll();
@@ -175,7 +190,7 @@ class CustomerController extends BaseController {
             $this->redirect('index.php?controller=customer&action=portal&tab=services');
         }
 
-        // [SỬA SV-E01] Đơn giá lấy từ danh mục dịch vụ phía máy chủ, số lượng tối thiểu 1
+        // Đơn giá lấy từ danh mục dịch vụ phía máy chủ, số lượng tối thiểu 1
         $service = $this->serviceModel->findService((string)($_POST['serviceName'] ?? ''));
         $roomNumber = trim($_POST['roomNumber'] ?? '');
         $room = $this->roomModel->findRoom($roomNumber);

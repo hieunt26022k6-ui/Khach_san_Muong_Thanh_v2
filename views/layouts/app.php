@@ -42,7 +42,7 @@ $cssFile = !empty($cssFiles) ? basename($cssFiles[0]) : 'index-BmDaYg5o.css';
       window.__MT_PHP_RUNTIME__ = true;
       window.__MT_SERVER_STATE__ = <?= $stateJson ?>;
 
-      /* [SỬA LẦN 2] Chặn leo thang đặc quyền qua localStorage.
+      /* Chặn leo thang đặc quyền qua localStorage.
          Giao diện React đọc currentUser từ localStorage trước, nên ai sửa giá trị đó
          thành {"role":"admin"} là vào được bảng quản trị. Đoạn này chạy TRƯỚC bundle:
          - phiên PHP chưa đăng nhập  -> xoá currentUser trong localStorage, ép về giao diện khách
@@ -74,7 +74,7 @@ $cssFile = !empty($cssFiles) ? basename($cssFiles[0]) : 'index-BmDaYg5o.css';
     <!-- Vùng hiển thị ứng dụng tương tác 3 phân quyền 5 sao -->
     <div id="root"></div>
 
-    <!-- [SỬA LẦN 2] Lưới an toàn: bundle React không có Error Boundary nên lỗi là trắng trang.
+    <!-- Lưới an toàn: bundle React không có Error Boundary nên lỗi là trắng trang.
          Nếu sau 5 giây #root vẫn rỗng, hiện thông báo + đường dẫn sang giao diện PHP thuần. -->
     <script>
       setTimeout(function () {

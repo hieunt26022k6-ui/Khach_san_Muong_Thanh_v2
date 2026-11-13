@@ -9,7 +9,7 @@ namespace Core;
 class Session {
     public static function start(): void {
         if (session_status() === PHP_SESSION_NONE) {
-            // [SỬA HT-E04] Cookie phiên an toàn hơn
+            // Cookie phiên an toàn hơn
             session_set_cookie_params([
                 'lifetime' => 0,
                 'path'     => '/',
@@ -61,7 +61,7 @@ class Session {
         return $val;
     }
 
-    /** [SỬA HT-E04] Mã chống CSRF: một mã ngẫu nhiên cho mỗi phiên. */
+    /** Mã chống CSRF: một mã ngẫu nhiên cho mỗi phiên. */
     public static function csrfToken(): string {
         self::start();
         if (empty($_SESSION['__csrf'])) {

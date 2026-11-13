@@ -27,7 +27,7 @@ class AuthController extends BaseController {
 
             $user = $this->userModel->authenticate($username, $password);
             if ($user) {
-                Session::regenerate(); // [SỬA HT-E04] chống cố định phiên
+                Session::regenerate(); // chống cố định phiên
                 Session::set('currentUser', $user);
                 Session::flash('success', "Xin chào {$user['fullName']}! Đăng nhập thành công.");
 
@@ -100,7 +100,7 @@ class AuthController extends BaseController {
      * Phím tắt chuyển đổi vai trò nhanh (Dành cho kiểm thử đồ án / giảng viên)
      */
     public function switchRole(): void {
-        // [SỬA HT-E07] Tính năng này bỏ qua đăng nhập, chỉ dùng khi trình diễn
+        // Tính năng này bỏ qua đăng nhập, chỉ dùng khi trình diễn
         if (!\Config\Config::DEMO_MODE) {
             Session::flash('error', 'Tính năng chuyển vai trò nhanh đã bị tắt.');
             $this->redirect('index.php?controller=customer&action=index');

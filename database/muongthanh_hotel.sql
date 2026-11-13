@@ -1,149 +1,361 @@
--- ==============================================================================
--- CƠ SỞ DỮ LIỆU: MƯỜNG THANH LUXURY PHÚ QUỐC
--- KIẾN TRÚC: PHP 8+ OOP MÔ HÌNH MVC (MODEL - VIEW - CONTROLLER)
--- HỖ TRỢ XAMPP (MYSQL 8.0+ / MARIADB 10.4+)
--- ==============================================================================
+-- =====================================================================
+-- MƯỜNG THANH LUXURY PHÚ QUỐC — CƠ SỞ DỮ LIỆU QUAN HỆ (MySQL 5.7+ / MariaDB 10.4+)
+-- Đồ án cuối kỳ môn Lập trình web với PHP (TMU x DEHA)
+-- Chạy: phpMyAdmin > Import, hoặc dòng lệnh:
+--   mysql -u root < database/muongthanh_hotel.sql
+--
+-- GHI CHÚ THIẾT KẾ
+--   * 1–N : room_categories → physical_rooms ; users → bookings ; bookings → service_orders
+--   * N–N : bookings ↔ services  (bảng trung gian booking_services)
+--   * 1–1 : users ↔ user_profiles ; khách sạn ↔ hotel_policy (bảng cấu hình một dòng)
+--   * Mỗi bảng có thêm cột payload JSON để giữ các thuộc tính mở rộng của giao diện
+--     (view không phải sửa), còn các cột có kiểu dữ liệu thật là nguồn dữ liệu chính
+--     cho truy vấn, khóa ngoại và báo cáo.
+-- =====================================================================
 
-SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0;
-
-CREATE DATABASE IF NOT EXISTS `muongthanh_hotel` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP DATABASE IF EXISTS `muongthanh_hotel`;
+CREATE DATABASE `muongthanh_hotel` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `muongthanh_hotel`;
 
--- 1. BẢNG NGƯỜI DÙNG & TÀI KHOẢN (RBAC)
+-- ---------------------------------------------------------------------
+-- 1. NGƯỜI DÙNG (khách hàng / lễ tân / quản trị viên)
+-- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
-    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-    `username` VARCHAR(50) NOT NULL UNIQUE,
-    `password` VARCHAR(255) NOT NULL,
-    `full_name` VARCHAR(100) NOT NULL,
-    `email` VARCHAR(100) DEFAULT NULL,
-    `phone` VARCHAR(20) DEFAULT NULL,
-    `id_card` VARCHAR(30) DEFAULT NULL,
-    `role` ENUM('customer', 'receptionist', 'admin') NOT NULL DEFAULT 'customer',
-    `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `id`          VARCHAR(20)  NOT NULL,
+    `username`    VARCHAR(50)  NOT NULL,
+    `password`    VARCHAR(255) NOT NULL COMMENT 'password_hash() — không lưu mật khẩu thô',
+    `full_name`   VARCHAR(100) NOT NULL,
+    `email`       VARCHAR(100) DEFAULT NULL,
+    `phone`       VARCHAR(20)  DEFAULT NULL,
+    `role`        ENUM('customer','receptionist','admin') NOT NULL DEFAULT 'customer',
+    `is_locked`   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'Khóa tài khoản thay vì xóa cứng',
+    `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`     JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_users_username` (`username`),
+    UNIQUE KEY `uq_users_email` (`email`),
+    KEY `idx_users_role` (`role`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Tài khoản 3 vai trò, phân quyền ở máy chủ';
 
-INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `email`, `phone`, `id_card`, `role`, `is_locked`) VALUES
-('usr_cust_01', 'khachhang', '123', 'Lê Minh Khách', 'khach@gmail.com', '0912345678', '079095001288', 'customer', 0),
-('usr_rec_01', 'letan', '123', 'Nguyễn Thu Thảo', 'thuthao.frontdesk@muongthanh.vn', '0908765432', '001192008899', 'receptionist', 0),
-('usr_adm_01', 'admin', '123', 'Hoàng Anh Tuấn (Tổng Quản Lý)', 'gm.phuquoc@muongthanh.vn', '0988112233', '001085000123', 'admin', 0),
-('usr_cust_02', 'khachhang2', '123', 'Trần Ngọc Bảo Trâm', 'baotram.tran@gmail.com', '0912998877', '001198004512', 'customer', 0);
+-- 1–1 với users: mỗi tài khoản có đúng một hồ sơ chi tiết
+DROP TABLE IF EXISTS `user_profiles`;
+CREATE TABLE `user_profiles` (
+    `user_id`       VARCHAR(20)  NOT NULL,
+    `id_card`       VARCHAR(20)  DEFAULT NULL,
+    `address`       VARCHAR(255) DEFAULT NULL,
+    `nationality`   VARCHAR(50)  DEFAULT 'Việt Nam',
+    `date_of_birth` DATE         DEFAULT NULL,
+    `payload`       JSON         DEFAULT NULL,
+    PRIMARY KEY (`user_id`),
+    CONSTRAINT `fk_profiles_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Quan hệ 1–1 với users (user_id vừa là PK vừa là FK)';
 
--- 2. BẢNG 9 HẠNG PHÒNG NGHỈ DƯỠNG
+-- ---------------------------------------------------------------------
+-- 2. HẠNG PHÒNG VÀ PHÒNG VẬT LÝ (1–N)
+-- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `room_categories`;
 CREATE TABLE `room_categories` (
-    `id` VARCHAR(20) NOT NULL PRIMARY KEY,
-    `code` VARCHAR(20) NOT NULL UNIQUE,
-    `name` VARCHAR(100) NOT NULL,
-    `vietnamese_name` VARCHAR(150) NOT NULL,
-    `view_type` VARCHAR(50) NOT NULL,
-    `bed_type` VARCHAR(100) NOT NULL,
-    `area_sqm` INT NOT NULL,
-    `base_price` BIGINT NOT NULL,
-    `max_adults` INT NOT NULL DEFAULT 2,
-    `max_children` INT NOT NULL DEFAULT 1,
-    `hero_image` VARCHAR(255) NOT NULL,
-    `description` TEXT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `id`             VARCHAR(20)  NOT NULL,
+    `code`           VARCHAR(10)  NOT NULL,
+    `name`           VARCHAR(150) NOT NULL,
+    `vietnamese_name` VARCHAR(150) DEFAULT NULL,
+    `view_type`      VARCHAR(50)  DEFAULT NULL,
+    `bed_type`       VARCHAR(50)  DEFAULT NULL,
+    `area_sqm`       INT          DEFAULT NULL,
+    `base_price`     DECIMAL(12,0) NOT NULL DEFAULT 0 COMMENT 'Giá niêm yết / đêm (VNĐ)',
+    `max_adults`     TINYINT      NOT NULL DEFAULT 2,
+    `max_children`   TINYINT      NOT NULL DEFAULT 0,
+    `hero_image`     VARCHAR(255) DEFAULT NULL,
+    `image_path`     VARCHAR(255) DEFAULT NULL COMMENT 'Ảnh do admin upload (thư mục assets/uploads)',
+    `is_active`      TINYINT(1)   NOT NULL DEFAULT 1,
+    `description`    TEXT         DEFAULT NULL,
+    `payload`        JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_categories_code` (`code`),
+    KEY `idx_categories_price` (`base_price`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Hạng phòng + bảng giá do admin thiết lập (AD-12)';
 
-INSERT INTO `room_categories` (`id`, `code`, `name`, `vietnamese_name`, `view_type`, `bed_type`, `area_sqm`, `base_price`, `max_adults`, `max_children`, `hero_image`, `description`) VALUES
-('dtcv', 'DTCV', 'Deluxe Twin City View', 'Deluxe 2 Giường Đơn — Hướng Phố', 'CITY', '2 giường đơn (1.2m x 2.0m)', 37, 1950000, 2, 1, 'assets/images/room_dtcv_main_1793420634905.jpg', 'Không gian trang nhã với nội thất gỗ cao cấp, ban công nhìn toàn cảnh phố biển sôi động.'),
-('ddcv', 'DDCV', 'Deluxe Double City View', 'Deluxe Giường Đôi — Hướng Phố', 'CITY', '1 giường King (2.0m x 2.0m)', 37, 2100000, 2, 1, 'assets/images/room_dtcv_main_1793420634905.jpg', 'Lựa chọn lý tưởng cho cặp đôi với giường King size êm ái và tầm nhìn thành phố biển lãng mạn.'),
-('dkov', 'DKOV', 'Deluxe King Ocean View', 'Deluxe Giường Đôi — Hướng Trực Diện Biển', 'OCEAN', '1 giường King siêu lớn (2.2m x 2.0m)', 42, 2850000, 2, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Hạng phòng biểu tượng đón trọn khoảnh khắc hoàng hôn Bãi Trường lộng lẫy từ ban công kính.'),
-('dtov', 'DTOV', 'Deluxe Twin Ocean View', 'Deluxe 2 Giường Đơn — Hướng Biển', 'OCEAN', '2 giường đơn lớn (1.4m x 2.0m)', 42, 2850000, 2, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Hoàn hảo cho gia đình hoặc đồng nghiệp du lịch biển, đón làn gió biển trong lành mỗi sớm mai.'),
-('esov', 'ESOV', 'Executive Suite Ocean View', 'Executive Suite — Phòng Khách Riêng Hướng Biển', 'OCEAN', '1 giường Super King (2.2m x 2.2m)', 68, 4500000, 2, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Suite cao cấp với phòng khách riêng biệt và phòng ngủ view biển panorama tuyệt mỹ.'),
-('jrsb', 'JRSB', 'Junior Suite Beachfront', 'Junior Suite — Sát Biển Ban Công Vườn', 'GARDEN_OCEAN', '1 giường King', 58, 3800000, 2, 2, 'assets/images/room_dtcv_main_1793420634905.jpg', 'Vài bước chân ra tới bãi cát trắng mịn, kết hợp hài hòa giữa khu vườn nhiệt đới và sóng biển.'),
-('psov', 'PSOV', 'Premier Suite Oceanfront', 'Premier Suite — Góc Panorama Mặt Biển', 'OCEAN', '1 giường Super King', 85, 6200000, 3, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Vị trí góc đỉnh cao với kính cong tràn viền mở tầm nhìn 270 độ ra toàn bộ vịnh Thái Lan.'),
-('exlo', 'EXLO', 'Executive Lounge Suite', 'Executive Lounge Suite — Tầng Cao VIP', 'OCEAN', '1 giường King', 72, 5400000, 2, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Tầng 8 cao nhất với đặc quyền sử dụng Executive Sky Lounge, cocktail hoàng hôn miễn phí mỗi ngày.'),
-('pres', 'PRES', 'Presidential Suite Grand', 'Phòng Tổng Thống — Siêu Căn Hộ Nghỉ Dưỡng', 'OCEAN', '2 phòng ngủ Master King', 185, 18000000, 4, 2, 'assets/images/room_dkov_suite_1793420636995.jpg', 'Biểu tượng xa hoa đỉnh cao bậc nhất: 2 phòng ngủ master, phòng họp thượng đỉnh, đàn piano và phòng tắm dát vàng.');
-
--- 3. BẢNG PHÒNG THỰC TẾ (ROOM RACK TẦNG 2 ĐẾN TẦNG 8)
 DROP TABLE IF EXISTS `physical_rooms`;
 CREATE TABLE `physical_rooms` (
-    `id` VARCHAR(20) NOT NULL PRIMARY KEY,
-    `room_number` VARCHAR(20) NOT NULL UNIQUE,
-    `floor` INT NOT NULL,
-    `category_id` VARCHAR(20) NOT NULL,
-    `status` ENUM('available', 'occupied', 'reserved', 'cleaning', 'maintenance') NOT NULL DEFAULT 'available',
-    `current_guest_name` VARCHAR(100) DEFAULT NULL,
-    FOREIGN KEY (`category_id`) REFERENCES `room_categories`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `id`                  VARCHAR(20) NOT NULL,
+    `room_number`         VARCHAR(10) NOT NULL,
+    `floor`               INT         DEFAULT NULL,
+    `category_id`         VARCHAR(20) NOT NULL,
+    `status`              ENUM('available','occupied','cleaning','maintenance') NOT NULL DEFAULT 'available',
+    `maintenance_reason`  VARCHAR(255) DEFAULT NULL COMMENT 'Lý do khóa phòng bảo trì (AD-12)',
+    `maintenance_until`   DATE         DEFAULT NULL,
+    `payload`             JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_rooms_number` (`room_number`),
+    KEY `idx_rooms_category` (`category_id`),
+    CONSTRAINT `fk_rooms_category` FOREIGN KEY (`category_id`)
+        REFERENCES `room_categories`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Quan hệ 1–N với room_categories';
 
-INSERT INTO `physical_rooms` (`id`, `room_number`, `floor`, `category_id`, `status`, `current_guest_name`) VALUES
-('p_201', 'P.201', 2, 'dtcv', 'available', NULL),
-('p_202', 'P.202', 2, 'dtcv', 'occupied', 'Nguyễn Văn An'),
-('p_203', 'P.203', 2, 'ddcv', 'reserved', 'Đỗ Mai Hương'),
-('p_204', 'P.204', 2, 'jrsb', 'cleaning', NULL),
-('p_301', 'P.301', 3, 'dtcv', 'available', NULL),
-('p_302', 'P.302', 3, 'ddcv', 'available', NULL),
-('p_303', 'P.303', 3, 'dkov', 'occupied', 'Lê Minh Khách'),
-('p_304', 'P.304', 3, 'dtov', 'available', NULL),
-('p_401', 'P.401', 4, 'dkov', 'available', NULL),
-('p_402', 'P.402', 4, 'dtov', 'maintenance', NULL),
-('p_403', 'P.403', 4, 'esov', 'occupied', 'Trần Ngọc Bảo Trâm'),
-('p_404', 'P.404', 4, 'jrsb', 'available', NULL),
-('p_501', 'P.501', 5, 'dkov', 'available', NULL),
-('p_502', 'P.502', 5, 'dkov', 'occupied', 'Phạm Quốc Hùng'),
-('p_503', 'P.503', 5, 'esov', 'available', NULL),
-('p_504', 'P.504', 5, 'psov', 'reserved', 'Vũ Thị Lan'),
-('p_601', 'P.601', 6, 'dkov', 'available', NULL),
-('p_602', 'P.602', 6, 'psov', 'available', NULL),
-('p_603', 'P.603', 6, 'exlo', 'occupied', 'David Miller'),
-('p_604', 'P.604', 6, 'exlo', 'available', NULL),
-('p_701', 'P.701', 7, 'esov', 'available', NULL),
-('p_702', 'P.702', 7, 'psov', 'available', NULL),
-('p_801', 'P.801', 8, 'exlo', 'available', NULL),
-('p_804', 'P.804', 8, 'pres', 'reserved', 'Đoàn Khách VIP Vingroup');
+-- ---------------------------------------------------------------------
+-- 3. GÓI PHÒNG VÀ DỊCH VỤ
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `packages`;
+CREATE TABLE `packages` (
+    `id`           VARCHAR(20)   NOT NULL,
+    `code`         VARCHAR(20)   DEFAULT NULL,
+    `name`         VARCHAR(150)  NOT NULL,
+    `price_offset` DECIMAL(12,0) NOT NULL DEFAULT 0 COMMENT 'Phụ thu / đêm so với giá hạng phòng',
+    `is_active`    TINYINT(1)    NOT NULL DEFAULT 1,
+    `description`  TEXT          DEFAULT NULL,
+    `payload`      JSON          DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_packages_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Gói phòng (ăn sáng, đưa đón...) admin bật/tắt (AD-12)';
 
--- 4. BẢNG ĐẶT PHÒNG & THANH TOÁN CỌC 30%
+DROP TABLE IF EXISTS `services`;
+CREATE TABLE `services` (
+    `id`         VARCHAR(20)   NOT NULL,
+    `code`       VARCHAR(20)   DEFAULT NULL,
+    `name`       VARCHAR(150)  NOT NULL,
+    `category`   VARCHAR(50)   DEFAULT NULL,
+    `price`      DECIMAL(12,0) NOT NULL DEFAULT 0,
+    `unit`       VARCHAR(20)   DEFAULT 'lần',
+    `is_active`  TINYINT(1)    NOT NULL DEFAULT 1,
+    `payload`    JSON          DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_services_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Dịch vụ bổ sung: ăn uống, spa, giặt ủi...';
+
+-- ---------------------------------------------------------------------
+-- 4. ĐƠN ĐẶT PHÒNG (1–N với users/room_categories/packages)
+-- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `bookings`;
 CREATE TABLE `bookings` (
-    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-    `booking_code` VARCHAR(30) NOT NULL UNIQUE,
-    `customer_name` VARCHAR(100) NOT NULL,
-    `customer_phone` VARCHAR(20) NOT NULL,
-    `customer_email` VARCHAR(100) DEFAULT NULL,
-    `category_id` VARCHAR(20) NOT NULL,
-    `category_name` VARCHAR(100) NOT NULL,
-    `assigned_room_number` VARCHAR(20) DEFAULT NULL,
-    `check_in_date` DATE NOT NULL,
-    `check_out_date` DATE NOT NULL,
-    `nights` INT NOT NULL DEFAULT 1,
-    `package_id` VARCHAR(50) NOT NULL,
-    `package_name` VARCHAR(100) NOT NULL,
-    `total_amount` BIGINT NOT NULL,
-    `deposit_paid` BIGINT NOT NULL,
-    `remaining_balance` BIGINT NOT NULL,
-    `status` ENUM('confirmed', 'checked_in', 'completed', 'cancelled') NOT NULL DEFAULT 'confirmed',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `id`                    VARCHAR(30)  NOT NULL,
+    `booking_code`          VARCHAR(20)  NOT NULL,
+    `user_id`               VARCHAR(20)  DEFAULT NULL COMMENT 'NULL khi khách đặt không cần tài khoản',
+    `customer_name`         VARCHAR(100) NOT NULL,
+    `customer_phone`        VARCHAR(20)  DEFAULT NULL,
+    `customer_email`        VARCHAR(100) DEFAULT NULL,
+    `category_id`           VARCHAR(20)  DEFAULT NULL,
+    `package_id`            VARCHAR(20)  DEFAULT NULL,
+    `assigned_room_number`  VARCHAR(10)  DEFAULT NULL,
+    `check_in_date`         DATE         NOT NULL,
+    `check_out_date`        DATE         NOT NULL,
+    `nights`                INT          NOT NULL DEFAULT 1,
+    `total_amount`          DECIMAL(14,0) NOT NULL DEFAULT 0,
+    `deposit_paid`          DECIMAL(14,0) NOT NULL DEFAULT 0,
+    `remaining_balance`     DECIMAL(14,0) NOT NULL DEFAULT 0,
+    `status`                ENUM('pending','confirmed','checked_in','completed','cancelled')
+                                         NOT NULL DEFAULT 'pending',
+    `note`                  VARCHAR(255) DEFAULT NULL,
+    `created_at`            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`               JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_bookings_code` (`booking_code`),
+    KEY `idx_bookings_user` (`user_id`),
+    KEY `idx_bookings_status` (`status`),
+    KEY `idx_bookings_checkin` (`check_in_date`),
+    CONSTRAINT `fk_bookings_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users`(`id`) ON DELETE SET NULL,
+    CONSTRAINT `fk_bookings_category` FOREIGN KEY (`category_id`)
+        REFERENCES `room_categories`(`id`) ON DELETE SET NULL,
+    CONSTRAINT `fk_bookings_package` FOREIGN KEY (`package_id`)
+        REFERENCES `packages`(`id`) ON DELETE SET NULL,
+    CONSTRAINT `fk_bookings_room` FOREIGN KEY (`assigned_room_number`)
+        REFERENCES `physical_rooms`(`room_number`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Đơn đặt phòng — 1–N tới bốn bảng danh mục';
 
-INSERT INTO `bookings` (`id`, `booking_code`, `customer_name`, `customer_phone`, `customer_email`, `category_id`, `category_name`, `assigned_room_number`, `check_in_date`, `check_out_date`, `nights`, `package_id`, `package_name`, `total_amount`, `deposit_paid`, `remaining_balance`, `status`) VALUES
-('bk_01', 'MT-8492', 'Lê Minh Khách', '0912345678', 'khach@gmail.com', 'dkov', 'Deluxe King Ocean View', 'P.303', '2026-11-08', '2026-11-11', 3, 'pkg_breakfast', 'Gói Kèm Buffet Sáng', 9600000, 2880000, 6720000, 'checked_in'),
-('bk_02', 'MT-5120', 'Trần Ngọc Bảo Trâm', '0912998877', 'baotram.tran@gmail.com', 'esov', 'Executive Suite Ocean View', 'P.403', '2026-11-08', '2026-11-12', 4, 'pkg_all_inclusive', 'Gói Nghỉ Dưỡng VIP Trọn Gói', 21800000, 6540000, 15260000, 'checked_in'),
-('bk_03', 'MT-9912', 'Đỗ Mai Hương', '0987112233', 'huong.do@yahoo.com', 'ddcv', 'Deluxe Double City View', 'P.203', '2026-11-09', '2026-11-11', 2, 'pkg_room_only', 'Gói Phòng Tiêu Chuẩn', 4200000, 1260000, 2940000, 'confirmed');
-
--- 5. BẢNG DỊCH VỤ VÀ GỌI MÓN PHÒNG QR
+-- ---------------------------------------------------------------------
+-- 5. DỊCH VỤ THEO ĐƠN + BẢNG TRUNG GIAN N–N
+-- ---------------------------------------------------------------------
 DROP TABLE IF EXISTS `service_orders`;
 CREATE TABLE `service_orders` (
-    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-    `booking_code` VARCHAR(30) DEFAULT NULL,
-    `room_number` VARCHAR(20) NOT NULL,
-    `guest_name` VARCHAR(100) NOT NULL,
-    `service_name` VARCHAR(150) NOT NULL,
-    `quantity` INT NOT NULL DEFAULT 1,
-    `unit_price` BIGINT NOT NULL,
-    `total_price` BIGINT NOT NULL,
-    `status` VARCHAR(50) NOT NULL DEFAULT 'confirmed',
-    `scheduled_time` VARCHAR(20) NOT NULL,
-    `note` TEXT DEFAULT NULL,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `id`             VARCHAR(20)   NOT NULL,
+    `booking_id`     VARCHAR(30)   DEFAULT NULL,
+    `booking_code`   VARCHAR(20)   DEFAULT NULL,
+    `service_id`     VARCHAR(20)   DEFAULT NULL,
+    `room_number`    VARCHAR(10)   DEFAULT NULL,
+    `guest_name`     VARCHAR(100)  DEFAULT NULL,
+    `service_name`   VARCHAR(150)  NOT NULL,
+    `quantity`       INT           NOT NULL DEFAULT 1,
+    `unit_price`     DECIMAL(12,0) NOT NULL DEFAULT 0,
+    `total_price`    DECIMAL(14,0) NOT NULL DEFAULT 0,
+    `status`         ENUM('pending','confirmed','completed','cancelled') NOT NULL DEFAULT 'pending',
+    `scheduled_time` VARCHAR(20)   DEFAULT NULL,
+    `note`           VARCHAR(255)  DEFAULT NULL,
+    `created_at`     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`        JSON          DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_so_booking` (`booking_id`),
+    KEY `idx_so_service` (`service_id`),
+    CONSTRAINT `fk_so_booking` FOREIGN KEY (`booking_id`)
+        REFERENCES `bookings`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_so_service` FOREIGN KEY (`service_id`)
+        REFERENCES `services`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Chi tiết dịch vụ của một đơn (1–N với bookings)';
 
-INSERT INTO `service_orders` (`id`, `booking_code`, `room_number`, `guest_name`, `service_name`, `quantity`, `unit_price`, `total_price`, `status`, `scheduled_time`, `note`) VALUES
-('so_01', 'MT-8492', 'P.303', 'Lê Minh Khách', 'Phở Bò Thăn Phú Quốc Đặc Biệt', 2, 195000, 390000, 'completed', '07:30', 'Ăn tại phòng, nhiều rau thơm'),
-('so_02', 'MT-5120', 'P.403', 'Trần Ngọc Bảo Trâm', 'Pearl Spa — Massage Toàn Thân Tinh Dầu 60 Phút', 2, 850000, 1700000, 'confirmed', '16:00', 'Phòng đôi cạnh nhau');
+-- N–N: một đơn đặt phòng dùng nhiều dịch vụ, một dịch vụ xuất hiện trong nhiều đơn
+DROP TABLE IF EXISTS `booking_services`;
+CREATE TABLE `booking_services` (
+    `booking_id`  VARCHAR(30)   NOT NULL,
+    `service_id`  VARCHAR(20)   NOT NULL,
+    `quantity`    INT           NOT NULL DEFAULT 1,
+    `unit_price`  DECIMAL(12,0) NOT NULL DEFAULT 0,
+    PRIMARY KEY (`booking_id`, `service_id`),
+    KEY `idx_bs_service` (`service_id`),
+    CONSTRAINT `fk_bs_booking` FOREIGN KEY (`booking_id`)
+        REFERENCES `bookings`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_bs_service` FOREIGN KEY (`service_id`)
+        REFERENCES `services`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Bảng trung gian N–N giữa bookings và services';
 
-SET FOREIGN_KEY_CHECKS = 1;
+-- ---------------------------------------------------------------------
+-- 6. NHẬT KÝ, SỰ CỐ, ĐÁNH GIÁ
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `audit_logs`;
+CREATE TABLE `audit_logs` (
+    `id`          VARCHAR(30)  NOT NULL,
+    `action`      VARCHAR(50)  NOT NULL,
+    `description` VARCHAR(255) DEFAULT NULL,
+    `operator`    VARCHAR(100) DEFAULT NULL,
+    `operator_id` VARCHAR(20)  DEFAULT NULL,
+    `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`     JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_logs_action` (`action`),
+    KEY `idx_logs_created` (`created_at`),
+    CONSTRAINT `fk_logs_operator` FOREIGN KEY (`operator_id`)
+        REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Nhật ký thao tác quản trị (AD-13)';
+
+DROP TABLE IF EXISTS `incidents`;
+CREATE TABLE `incidents` (
+    `id`             VARCHAR(20)  NOT NULL,
+    `booking_code`   VARCHAR(20)  DEFAULT NULL,
+    `room_number`    VARCHAR(10)  DEFAULT NULL,
+    `guest_name`     VARCHAR(100) DEFAULT NULL,
+    `title`          VARCHAR(150) NOT NULL,
+    `description`    TEXT         DEFAULT NULL,
+    `severity`       ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
+    `status`         ENUM('open','processing','resolved') NOT NULL DEFAULT 'open',
+    `resolution_note` VARCHAR(255) DEFAULT NULL,
+    `reported_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`        JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_incidents_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Sự cố phòng do khách / lễ tân ghi nhận';
+
+DROP TABLE IF EXISTS `reviews`;
+CREATE TABLE `reviews` (
+    `id`              VARCHAR(20)  NOT NULL,
+    `booking_id`      VARCHAR(30)  DEFAULT NULL,
+    `booking_code`    VARCHAR(20)  DEFAULT NULL,
+    `customer_id`     VARCHAR(20)  DEFAULT NULL,
+    `category_id`     VARCHAR(20)  DEFAULT NULL,
+    `guest_name`      VARCHAR(100) DEFAULT NULL,
+    `rating`          TINYINT      NOT NULL DEFAULT 5,
+    `title`           VARCHAR(150) DEFAULT NULL,
+    `comment`         TEXT         DEFAULT NULL,
+    `reply_from_hotel` TEXT        DEFAULT NULL,
+    `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`         JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_reviews_category` (`category_id`),
+    CONSTRAINT `fk_reviews_customer` FOREIGN KEY (`customer_id`)
+        REFERENCES `users`(`id`) ON DELETE SET NULL,
+    CONSTRAINT `fk_reviews_category` FOREIGN KEY (`category_id`)
+        REFERENCES `room_categories`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Đánh giá sau lưu trú';
+
+-- ---------------------------------------------------------------------
+-- 7. MẪU THÔNG BÁO VÀ THÔNG BÁO ĐÃ GỬI
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `notification_templates`;
+CREATE TABLE `notification_templates` (
+    `id`            VARCHAR(20)  NOT NULL,
+    `code`          VARCHAR(30)  NOT NULL,
+    `name`          VARCHAR(100) DEFAULT NULL,
+    `subject`       VARCHAR(200) DEFAULT NULL,
+    `body_template` TEXT         DEFAULT NULL,
+    `channel`       VARCHAR(20)  DEFAULT 'email',
+    `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`       JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_templates_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Mẫu email / SMS, admin sửa được';
+
+DROP TABLE IF EXISTS `sent_notifications`;
+CREATE TABLE `sent_notifications` (
+    `id`                    VARCHAR(30)  NOT NULL,
+    `recipient`             VARCHAR(100) DEFAULT NULL,
+    `recipient_customer_id` VARCHAR(20)  DEFAULT NULL,
+    `related_booking_code`  VARCHAR(20)  DEFAULT NULL,
+    `template_code`         VARCHAR(30)  DEFAULT NULL,
+    `priority`              VARCHAR(20)  DEFAULT 'normal',
+    `subject`               VARCHAR(200) DEFAULT NULL,
+    `message`               TEXT         DEFAULT NULL,
+    `is_read`               TINYINT(1)   NOT NULL DEFAULT 0,
+    `sent_at`               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `payload`               JSON         DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_sent_customer` (`recipient_customer_id`),
+    CONSTRAINT `fk_sent_customer` FOREIGN KEY (`recipient_customer_id`)
+        REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Hộp thư thông báo đã gửi cho khách';
+
+-- ---------------------------------------------------------------------
+-- 8. CHÍNH SÁCH KHÁCH SẠN (bảng cấu hình 1 dòng — quan hệ 1–1 với "khách sạn")
+-- ---------------------------------------------------------------------
+DROP TABLE IF EXISTS `hotel_policy`;
+CREATE TABLE `hotel_policy` (
+    `setting_key`   VARCHAR(50)  NOT NULL,
+    `setting_value` VARCHAR(255) DEFAULT NULL,
+    `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Cọc, phạt hủy muộn, giờ nhận/trả phòng (AD-12)';
+
+-- Cờ đánh dấu CSDL đã được nạp dữ liệu mẫu hay chưa
+DROP TABLE IF EXISTS `system_flags`;
+CREATE TABLE `system_flags` (
+    `flag_key`   VARCHAR(50) NOT NULL,
+    `flag_value` VARCHAR(255) DEFAULT NULL,
+    PRIMARY KEY (`flag_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- 9. DỮ LIỆU MẪU TỐI THIỂU (hệ thống tự nạp bộ dữ liệu đầy đủ ở lần chạy đầu;
+--    phần dưới chỉ để CSDL vừa import đã có tài khoản admin đăng nhập được)
+-- ---------------------------------------------------------------------
+INSERT INTO `users` (`id`,`username`,`password`,`full_name`,`email`,`phone`,`role`,`is_locked`) VALUES
+('usr_adm_01','admin','123','TS. Vũ Đình Trọng (Giám Đốc Điều Hành)','admin@muongthanh.vn','0909999888','admin',0),
+('usr_rec_01','letan','123','Lê Thị Mai Hương (Trưởng Ca Lễ Tân)','letan@muongthanh.vn','0987654321','receptionist',0),
+('usr_cust_01','khachhang','123','Lê Minh Khách','khach@gmail.com','0912345678','customer',0);
+
+INSERT INTO `hotel_policy` (`setting_key`,`setting_value`) VALUES
+('standardCheckInTime','14:00'),('standardCheckOutTime','12:00'),
+('freeCancelBeforeHours','336'),('lateCancelPenaltyPercent','50'),
+('depositRequiredPercent','30'),('vatPercent','8'),('serviceChargePercent','5');
+
+INSERT INTO `system_flags` (`flag_key`,`flag_value`) VALUES ('seeded','0');
+
+-- ---------------------------------------------------------------------
+-- 10. TRUY VẤN MINH HOẠ QUAN HỆ (dùng khi bảo vệ đồ án)
+-- ---------------------------------------------------------------------
+-- a) N–N: những dịch vụ đi kèm một đơn đặt phòng
+-- SELECT b.booking_code, s.name, bs.quantity, bs.unit_price
+--   FROM booking_services bs
+--   JOIN bookings b ON b.id = bs.booking_id
+--   JOIN services s ON s.id = bs.service_id
+--  WHERE b.booking_code = 'MT-8492';
+--
+-- b) 1–N: số phòng vật lý của từng hạng phòng
+-- SELECT c.name, COUNT(p.id) AS so_phong
+--   FROM room_categories c LEFT JOIN physical_rooms p ON p.category_id = c.id
+--  GROUP BY c.id;
+--
+-- c) 1–1: hồ sơ chi tiết của từng tài khoản
+-- SELECT u.username, u.full_name, pr.address, pr.id_card
+--   FROM users u LEFT JOIN user_profiles pr ON pr.user_id = u.id;
+--
+-- d) Báo cáo doanh thu 7 ngày (AD-13)
+-- SELECT DATE(check_in_date) AS ngay, COUNT(*) AS so_don, SUM(total_amount) AS doanh_thu
+--   FROM bookings WHERE status <> 'cancelled'
+--  GROUP BY DATE(check_in_date) ORDER BY ngay DESC LIMIT 7;

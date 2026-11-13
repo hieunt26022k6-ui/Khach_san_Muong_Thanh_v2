@@ -108,7 +108,7 @@ $isStaffPortal = $isStaffPortal ?? false;
 </footer>
 <?php endif; ?>
 
-<?php /* [SỬA HT-E04] Tự gắn mã CSRF vào mọi biểu mẫu POST trên trang */ ?>
+<?php /* Tự gắn mã CSRF vào mọi biểu mẫu POST trên trang */ ?>
 <script>
 (function () {
     var token = <?= json_encode(\Core\Session::csrfToken()) ?>;

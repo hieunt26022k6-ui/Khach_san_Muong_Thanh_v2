@@ -57,30 +57,63 @@ class Report extends BaseModel {
     }
 
     /**
-     * [SỬA LẦN 2] Doanh thu 7 ngày gần nhất tính từ đơn đặt phòng + đơn dịch vụ thật,
+     * Doanh thu 7 ngày gần nhất tính từ đơn đặt phòng + đơn dịch vụ thật,
      * thay cho mảng số minh hoạ [12.4, 15.8, …] hard-code trong View.
      * Đơn được tính vào ngày khách nhận phòng (checkInDate).
      */
     public function getDailyRevenue(int $days = 7): array {
-        $bookings = Session::get('bookings', []);
-        $serviceOrders = Session::get('serviceOrders', []);
-
         $buckets = [];
         for ($i = $days - 1; $i >= 0; $i--) {
             $key = date('Y-m-d', strtotime("-{$i} day"));
             $buckets[$key] = ['date' => $key, 'revenue' => 0, 'bookings' => 0];
         }
 
-        foreach ($bookings as $b) {
-            $day = substr((string)($b['checkInDate'] ?? ''), 0, 10);
-            if (!isset($buckets[$day])) continue;
-            $buckets[$day]['revenue'] += (int)($b['totalAmount'] ?? 0);
-            $buckets[$day]['bookings']++;
-        }
-        foreach ($serviceOrders as $so) {
-            $day = substr((string)($so['createdAt'] ?? $so['date'] ?? ''), 0, 10);
-            if (!isset($buckets[$day])) continue;
-            $buckets[$day]['revenue'] += (int)($so['totalPrice'] ?? 0);
+        if ($this->db !== null) {
+            // Doanh thu tính TRỰC TIẾP bằng SQL GROUP BY trên CSDL MySQL (không đọc cả bảng rồi cộng tay)
+            $from = date('Y-m-d', strtotime('-' . ($days - 1) . ' day'));
+            $st = $this->db->prepare(
+                "SELECT DATE(check_in_date) AS ngay, COUNT(*) AS so_don, SUM(total_amount) AS doanh_thu
+                   FROM bookings
+                  WHERE status <> 'cancelled' AND check_in_date >= :from
+               GROUP BY DATE(check_in_date)"
+            );
+            $st->execute([':from' => $from]);
+            foreach ($st->fetchAll() as $r) {
+                $day = substr((string)$r['ngay'], 0, 10);
+                if (!isset($buckets[$day])) { continue; }
+                $buckets[$day]['revenue'] += (int)$r['doanh_thu'];
+                $buckets[$day]['bookings'] += (int)$r['so_don'];
+            }
+
+            $st = $this->db->prepare(
+                "SELECT DATE(created_at) AS ngay, SUM(total_price) AS doanh_thu
+                   FROM service_orders
+                  WHERE status <> 'cancelled' AND created_at >= :from
+               GROUP BY DATE(created_at)"
+            );
+            $st->execute([':from' => $from]);
+            foreach ($st->fetchAll() as $r) {
+                $day = substr((string)$r['ngay'], 0, 10);
+                if (!isset($buckets[$day])) { continue; }
+                $buckets[$day]['revenue'] += (int)$r['doanh_thu'];
+            }
+        } else {
+            // Chế độ dự phòng khi MySQL chưa bật: cộng từ dữ liệu đang lưu
+            $bookings = Session::get('bookings', []);
+            $serviceOrders = Session::get('serviceOrders', []);
+
+            foreach ($bookings as $b) {
+                $day = substr((string)($b['checkInDate'] ?? ''), 0, 10);
+                if (!isset($buckets[$day])) { continue; }
+                if (($b['status'] ?? '') === 'cancelled') { continue; }
+                $buckets[$day]['revenue'] += (int)($b['totalAmount'] ?? 0);
+                $buckets[$day]['bookings']++;
+            }
+            foreach ($serviceOrders as $so) {
+                $day = substr((string)($so['createdAt'] ?? $so['date'] ?? ''), 0, 10);
+                if (!isset($buckets[$day])) { continue; }
+                $buckets[$day]['revenue'] += (int)($so['totalPrice'] ?? 0);
+            }
         }
 
         $max = 0;

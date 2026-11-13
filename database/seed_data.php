@@ -14,6 +14,8 @@ return [
             'email' => 'khach@gmail.com',
             'phone' => '0912345678',
             'idCard' => '079095001288',
+            'address' => '128 Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh',
+            'dateOfBirth' => '1995-01-12',
             'role' => 'customer',
             'isLocked' => false,
             'createdAt' => '2026-09-10 08:30:00'
@@ -26,6 +28,8 @@ return [
             'email' => 'thuthao.frontdesk@muongthanh.vn',
             'phone' => '0908765432',
             'idCard' => '001192008899',
+            'address' => 'Tổ 7, Trần Hưng Đạo, Dương Đông, Phú Quốc',
+            'dateOfBirth' => '1992-08-20',
             'role' => 'receptionist',
             'isLocked' => false,
             'createdAt' => '2026-08-01 07:00:00'
@@ -38,6 +42,8 @@ return [
             'email' => 'gm.phuquoc@muongthanh.vn',
             'phone' => '0988112233',
             'idCard' => '001085000123',
+            'address' => 'Khu Bãi Trường, Dương Tơ, Phú Quốc, Kiên Giang',
+            'dateOfBirth' => '1985-03-05',
             'role' => 'admin',
             'isLocked' => false,
             'createdAt' => '2026-01-01 00:00:00'
@@ -50,6 +56,8 @@ return [
             'email' => 'baotram.tran@gmail.com',
             'phone' => '0912998877',
             'idCard' => '001198004512',
+            'address' => '45 Lý Thường Kiệt, Hoàn Kiếm, Hà Nội',
+            'dateOfBirth' => '1998-04-15',
             'role' => 'customer',
             'isLocked' => false,
             'createdAt' => '2026-09-15 10:15:00'

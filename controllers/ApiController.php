@@ -16,7 +16,7 @@ class ApiController extends BaseController {
         $code = (string)($_GET['code'] ?? '');
         $subTotal = max(0, (int)($_GET['total'] ?? 0));
 
-        // [SỬA KH-E02] Dùng chung lớp Models\Voucher với Controller đặt phòng
+        // Dùng chung lớp Models\Voucher với Controller đặt phòng
         $res = Voucher::apply($code, $subTotal);
         if ($res['valid']) {
             $this->json(['valid' => true, 'discount' => $res['discount'], 'label' => $res['label']]);

@@ -27,7 +27,7 @@ class ServiceOrder extends BaseModel {
 
     public function create(array $data): array {
         $orders = $this->getAll();
-        // [SỬA SV-E01] Chuẩn hóa số lượng MỘT lần rồi dùng cho cả lưu trữ lẫn tính tiền
+        // Chuẩn hóa số lượng MỘT lần rồi dùng cho cả lưu trữ lẫn tính tiền
         $qty = max(1, (int)($data['quantity'] ?? 1));
         $unit = (int)$data['unitPrice'];
         $newOrder = [

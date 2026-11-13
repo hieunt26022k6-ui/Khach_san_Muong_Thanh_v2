@@ -3,7 +3,7 @@
  * MƯỜNG THANH LUXURY PHÚ QUỐC — PHP OOP MVC
  * Models/AuditLog.php
  *
- * [SỬA QT-E02] Ghi nhật ký thao tác nhạy cảm (nhận/trả phòng, đổi giá, khóa tài khoản, khôi phục dữ liệu).
+ * Ghi nhật ký thao tác nhạy cảm (nhận/trả phòng, đổi giá, khóa tài khoản, khôi phục dữ liệu).
  */
 
 namespace Models;

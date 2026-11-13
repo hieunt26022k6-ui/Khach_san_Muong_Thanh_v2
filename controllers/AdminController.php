@@ -8,6 +8,7 @@ namespace Controllers;
 
 use Core\BaseController;
 use Core\Session;
+use Core\Store;
 use Models\Report;
 use Models\User;
 use Models\Room;
@@ -37,7 +38,7 @@ class AdminController extends BaseController {
         $categories = $this->roomModel->getCategories();
         $auditLogs = Session::get('auditLogs', []);
 
-        // [SỬA LẦN 2] Tìm kiếm + phân trang — hai yêu cầu bắt buộc của đề mà bản trước chưa có.
+        // Tìm kiếm + phân trang — hai yêu cầu bắt buộc của đề mà bản trước chưa có.
         $keyword = trim((string)($_GET['q'] ?? ''));
         $page = max(1, (int)($_GET['page'] ?? 1));
 
@@ -68,6 +69,8 @@ class AdminController extends BaseController {
             'userTotal' => $userPager['total'],
             'userPages' => $userPager['pages'],
             'categories' => $categories,
+            'packages' => $this->roomModel->getPackages(),
+            'physicalRooms' => $this->roomModel->getPhysicalRooms(),
             'bookings' => $bookingPager['rows'],
             'bookingTotal' => $bookingPager['total'],
             'bookingPages' => $bookingPager['pages'],
@@ -83,7 +86,7 @@ class AdminController extends BaseController {
         ]);
     }
 
-    /** [SỬA LẦN 2] Tạo tài khoản nhân viên (quản lý người dùng theo đề bài). */
+    /** Tạo tài khoản nhân viên (quản lý người dùng theo đề bài). */
     public function createUser(): void {
         $this->requireRole('admin');
 
@@ -105,7 +108,7 @@ class AdminController extends BaseController {
         $this->redirect('index.php?controller=admin&action=index&tab=users');
     }
 
-    /** [SỬA LẦN 2] Gán lại vai trò cho tài khoản. */
+    /** Gán lại vai trò cho tài khoản. */
     public function updateRole(): void {
         $this->requireRole('admin');
 
@@ -123,7 +126,7 @@ class AdminController extends BaseController {
     }
 
     /**
-     * [SỬA LẦN 2] Cập nhật chính sách cọc & hủy — trước đây tab này chỉ đọc (readonly),
+     * Cập nhật chính sách cọc & hủy — trước đây tab này chỉ đọc (readonly),
      * trái với yêu cầu AD-12 "thiết lập chính sách, chỉ áp dụng cho đơn mới".
      */
     public function updatePolicy(): void {
@@ -144,20 +147,80 @@ class AdminController extends BaseController {
                 $this->redirect('index.php?controller=admin&action=index&tab=policy');
             }
 
+            $lateCancel = (int)($_POST['lateCancelPenaltyPercent'] ?? 0);
+            if ($lateCancel < 0 || $lateCancel > 100) {
+                Session::flash('error', 'Mức phạt hủy muộn phải trong khoảng 0–100%.');
+                $this->redirect('index.php?controller=admin&action=index&tab=policy');
+            }
+
             $policy['depositRequiredPercent'] = $deposit;
             $policy['freeCancelBeforeHours'] = $freeCancel;
+            $policy['lateCancelPenaltyPercent'] = $lateCancel;
             if ($childNote !== '') $policy['childPolicyNote'] = $childNote;
             $policy['updatedAt'] = date('Y-m-d H:i:s');
 
             Session::set('policy', $policy);
-            AuditLog::record('POLICY_UPDATE', "Cọc {$deposit}% · hủy miễn phí trước {$freeCancel} giờ");
+            AuditLog::record('POLICY_UPDATE', "Cọc {$deposit}% · hủy miễn phí trước {$freeCancel} giờ · phạt hủy muộn {$lateCancel}%");
             Session::flash('success', 'Đã lưu chính sách mới. Chính sách chỉ áp dụng cho đơn đặt mới.');
         }
         $this->redirect('index.php?controller=admin&action=index&tab=policy');
     }
 
     /**
-     * [SỬA LẦN 2] Xử lý file: tải ảnh đại diện cho hạng phòng (yêu cầu "xử lý file" của đề).
+     * AD-12: cập nhật gói phòng (phụ thu / đêm) và bật-tắt kinh doanh gói.
+     */
+    public function updatePackage(): void {
+        $this->requireRole('admin');
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $packageId = (string)($_POST['packageId'] ?? '');
+            $priceOffset = (int)($_POST['priceOffset'] ?? 0);
+            $isActive = !empty($_POST['isActive']);
+
+            if ($priceOffset < 0) {
+                Session::flash('error', 'Phụ thu gói phòng không được âm.');
+            } elseif ($this->roomModel->updatePackage($packageId, $priceOffset, $isActive)) {
+                AuditLog::record('PACKAGE_UPDATE', 'Cập nhật gói phòng ' . $packageId
+                    . ' · phụ thu ' . number_format($priceOffset, 0, ',', '.') . ' ₫/đêm · '
+                    . ($isActive ? 'đang bán' : 'tạm ngưng'));
+                Session::flash('success', 'Đã cập nhật gói phòng. Thay đổi chỉ áp dụng cho đơn đặt mới.');
+            } else {
+                Session::flash('error', 'Không tìm thấy gói phòng cần cập nhật.');
+            }
+        }
+        $this->redirect('index.php?controller=admin&action=index&tab=room_categories');
+    }
+
+    /**
+     * AD-12: khóa phòng bảo trì (không xóa dữ liệu) hoặc mở khai thác lại.
+     */
+    public function setRoomMaintenance(): void {
+        $this->requireRole('admin');
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $roomNumber = trim((string)($_POST['roomNumber'] ?? ''));
+            $action = (string)($_POST['maintenanceAction'] ?? 'lock');
+            $lock = $action === 'lock';
+            $reason = trim((string)($_POST['reason'] ?? ''));
+            $until = trim((string)($_POST['until'] ?? ''));
+
+            if ($roomNumber === '') {
+                Session::flash('error', 'Chưa chọn phòng cần xử lý.');
+            } elseif ($this->roomModel->setRoomMaintenance($roomNumber, $lock, $reason, $until)) {
+                AuditLog::record('ROOM_MAINTENANCE', ($lock ? 'Khóa bảo trì phòng ' : 'Mở khai thác lại phòng ')
+                    . $roomNumber . ($lock && $reason !== '' ? ' · lý do: ' . $reason : ''));
+                Session::flash('success', $lock
+                    ? "Đã khóa phòng {$roomNumber} để bảo trì (không xóa khỏi hệ thống)."
+                    : "Đã mở khai thác lại phòng {$roomNumber}.");
+            } else {
+                Session::flash('error', 'Không tìm thấy phòng ' . $roomNumber . '.');
+            }
+        }
+        $this->redirect('index.php?controller=admin&action=index&tab=room_categories');
+    }
+
+    /**
+     * Xử lý file: tải ảnh đại diện cho hạng phòng (yêu cầu "xử lý file" của đề).
      */
     public function uploadCategoryImage(): void {
         $this->requireRole('admin');
@@ -223,27 +286,19 @@ class AdminController extends BaseController {
     public function resetData(): void {
         $this->requireRole('admin');
 
-        // [SỬA HT-E06] Thao tác xóa dữ liệu chỉ nhận POST (đã kèm kiểm tra CSRF ở Router)
+        // Thao tác xóa dữ liệu chỉ nhận POST (đã kèm kiểm tra CSRF ở Router)
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             Session::flash('error', 'Khôi phục dữ liệu phải gửi bằng nút xác nhận trong bảng quản trị.');
             $this->redirect('index.php?controller=admin&action=index');
         }
 
-        Session::remove('__mt_initialized');
-        $seedFile = __DIR__ . '/../database/seed_data.php';
-        if (file_exists($seedFile)) {
-            $seed = require $seedFile;
-            Session::set('users', $seed['users'] ?? []);
-            Session::set('roomCategories', $seed['roomCategories'] ?? []);
-            Session::set('physicalRooms', $seed['physicalRooms'] ?? []);
-            Session::set('packages', $seed['packages'] ?? []);
-            Session::set('services', $seed['services'] ?? []);
-            Session::set('bookings', $seed['bookings'] ?? []);
-            Session::set('serviceOrders', $seed['serviceOrders'] ?? []);
-            Session::set('auditLogs', $seed['auditLogs'] ?? []);
-            Session::set('__mt_initialized', true);
-            AuditLog::record('RESET_DATA', 'Khôi phục dữ liệu mẫu');
+        // Nạp lại TOÀN BỘ các nhóm dữ liệu (người dùng, phòng, gói, dịch vụ, đơn, sự cố,
+        // đánh giá, chính sách, mẫu thông báo, nhật ký) trong một giao dịch duy nhất.
+        if (Store::resetAll()) {
+            AuditLog::record('RESET_DATA', 'Khôi phục toàn bộ dữ liệu mẫu');
             Session::flash('success', 'Đã khôi phục toàn bộ dữ liệu mẫu ban đầu thành công!');
+        } else {
+            Session::flash('error', 'Không tìm thấy tệp dữ liệu mẫu để khôi phục.');
         }
         $this->redirect('index.php?controller=admin&action=index');
     }

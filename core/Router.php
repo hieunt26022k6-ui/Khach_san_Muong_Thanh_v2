@@ -21,7 +21,7 @@ class Router {
             $actionName = 'index';
         }
 
-        // [SỬA HT-E04] Mọi yêu cầu POST (trừ API chỉ đọc) phải mang mã CSRF hợp lệ
+        // Mọi yêu cầu POST (trừ API chỉ đọc) phải mang mã CSRF hợp lệ
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $controllerName !== 'api') {
             if (!Session::checkCsrf($_POST['csrf'] ?? null)) {
                 http_response_code(403);
@@ -32,7 +32,7 @@ class Router {
 
         $controllerInstance = new $controllerClass();
 
-        // [SỬA HT-E02] Chỉ cho gọi phương thức public, không phải phương thức ma thuật (__construct...)
+        // Chỉ cho gọi phương thức public, không phải phương thức ma thuật (__construct...)
         $callable = false;
         if (preg_match('/^[a-zA-Z][a-zA-Z0-9]*$/', $actionName) && method_exists($controllerInstance, $actionName)) {
             $callable = (new ReflectionMethod($controllerInstance, $actionName))->isPublic();
